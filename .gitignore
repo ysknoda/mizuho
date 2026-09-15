@@ -1,0 +1,39 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Project output
+*.vasp
+
+# Pre-packaging single-file predecessor, kept locally for reference only
+legacy/
+
+# AI-assisted-development tooling (process artifacts, not the package)
+.claude/
+.code-check/
+.github_release/
+.pip_preparation/

@@ -1,0 +1,132 @@
+# Topaz Al2SiO4F2, space group 62 (Pnma). Orthorhombic (3 lattice
+# params). Generalisation check for MULTIPLE anion species (see the
+# mizuho-py-wychoff-position plan's Phase B-2 section, and the
+# discussion that led to narrow_constraint_groups being decomposed by
+# constraint BREADTH rather than cation/anion role): Al is coordinated
+# by a MIX of O and F (an octahedron drawing from two anion species at
+# once), while Si is coordinated by O only -- a genuinely different,
+# asymmetric coupling shape from Adamite's single-anion (O) case and
+# spinel's single-anion (O) case.
+#
+# Charge balance: 2*Al(+3) + Si(+4) + 4*O(-2) + 2*F(-1)
+#               = 6 + 4 - 8 - 2 = 0.
+composition: Al2SiO4F2
+spacegroup: 62
+spacegroup_symbol: Pnma
+
+ionic_charges:
+  Al: 3
+  Si: 4
+  O: -2
+  F: -1
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  # Natural topaz (Handbook of Mineralogy, Mineral Data Publishing 2001):
+  # Pbnm a=4.6499(3) b=8.7968(6) c=8.3909(5). mizuho's SG62 data is
+  # verified (see mizuho.data.get_ops(62)) to be genuine Pnma (n-glide
+  # perp a, mirror perp b, a-glide perp c), and Pnma/Pbnm axes relate by
+  # a_Pnma=b_Pbnm, b_Pnma=c_Pbnm, c_Pnma=a_Pbnm -- so in THIS fixture's
+  # a/b/c (Pnma), the experimental targets are a~8.80, b~8.39, c~4.65.
+  a: [7.6, 9.2]
+  b: [8.0, 9.6]
+  c: [4.0, 5.3]
+
+bond_constraints:
+  - atom1: Al
+    atom2: O
+    distance_min: 1.80
+    distance_max: 2.05
+    # Measured at tests/fixtures/reference/topaz.cif (ADR-0004):
+    # Al first shell ends 1.902 A, second starts 3.325 A.
+    cutoff: 2.613
+    weight: 1.0
+  - atom1: Al
+    atom2: F
+    distance_min: 1.75
+    distance_max: 1.95
+    # Measured at tests/fixtures/reference/topaz.cif (ADR-0004):
+    # Al first shell ends 1.902 A, second starts 3.325 A.
+    cutoff: 2.613
+    weight: 1.0
+  - atom1: Si
+    atom2: O
+    distance_min: 1.55
+    distance_max: 1.75
+    # Measured at tests/fixtures/reference/topaz.cif (ADR-0004):
+    # Si first shell ends 1.642 A, second starts 3.229 A.
+    cutoff: 2.436
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Al
+    atom_neighbor: [O, F]
+    angle_min: 78.0
+    angle_max: 102.0
+    weight: 1.0
+  - atom_center: Si
+    atom_neighbor: O
+    angle_min: 100.0
+    angle_max: 120.0
+    weight: 1.5
+
+coordination_constraints:
+  # Stated explicitly rather than left to augment_coupling_constraints,
+  # whose cutoff (max bond distance_max) sits only ~0.15 A past the real
+  # bond and leaves the logistic soft count unsaturated. Measured at the
+  # reference structure (ADR-0004).
+  - center_atom: O
+    neighbor_atom: X
+    cn_min: 2
+    cn_max: 4
+    cutoff_distance: 2.566
+    weight: 1.0
+  - center_atom: F
+    neighbor_atom: X
+    cn_min: 2
+    cn_max: 4
+    cutoff_distance: 2.445
+    weight: 1.0
+
+  - center_atom: Al
+    neighbor_atom: [O, F]
+    cn_min: 6
+    cn_max: 6
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 2.613
+    weight: 1.5
+  - center_atom: Si
+    neighbor_atom: O
+    cn_min: 4
+    cn_max: 4
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 2.436
+    weight: 1.5
+
+# All fields auto-computed from composition via the Hazen-type additive
+# volume rule (V_est=407.5 A^3 here, band [326.0,590.9]). Note (see the
+# mizuho-py-wychoff-position plan's phase I-3): this alone does NOT fix
+# the wide-lattice_bounds degenerate-shape failure mode observed on
+# this fixture (a flat a=18/b=30/c=1-type cell can have a "reasonable"
+# total volume while being the wrong shape entirely) -- kept anyway
+# since it is harmless and does help on other fixtures (e.g. adamite),
+# and volume + a future shape-aware term are meant to be complementary,
+# not alternatives.
+volume_constraint: {}
+
+tree_search:
+  max_sites: 9
+  max_formula_units: 4
+  # ~3,200 total candidates (measured) -- the default shortlist
+  # (min(4*max_cands,2000)) would hand ~2000 of them to the expensive
+  # STAGE-2 joint {Al,Si,O,F} solve; capped tighter here to keep a
+  # verification run practical.
+  feasibility_shortlist: 60
+
+optimization:
+  n_restarts: 8
+  cma_maxiter: 300
+  refine_maxiter: 400
+  seed: 42

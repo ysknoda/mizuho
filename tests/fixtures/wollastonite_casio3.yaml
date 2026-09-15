@@ -1,0 +1,112 @@
+# Wollastonite-type CaSiO3, space group 2 (P-1). Triclinic (6 lattice
+# params: a,b,c,alpha,beta,gamma all free) -- phase I-3's generalisation
+# check for the new cell_validity_constraint / aspect_ratio_constraint
+# machinery, and for _coordination_shell_seed_x0's directional shape-hint
+# refinement, on a genuinely low-symmetry system (unlike adamite/spinel/
+# topaz, all orthorhombic/cubic with every angle fixed at 90 deg).
+#
+# Real triclinic CaSiO3 (wollastonite, P-1) has Z=6 (three inequivalent
+# Ca sites, three inequivalent Si sites) -- with SG2's general position
+# multiplicity of only 2, that is 15 independent Wyckoff sites (~51
+# optimisation dimensions), well beyond what a single verification run
+# can practically explore. This fixture deliberately keeps the REAL
+# bond-distance chemistry and space group, but caps
+# tree_search.max_formula_units to Z=1 -- exactly the same "real
+# chemistry, tractable candidate count" simplification topaz.yaml
+# already uses (see that fixture's own comments), not an attempt to
+# reproduce wollastonite's exact atom-by-atom site table.
+#
+# Source (WebSearch, cross-checked against Materials Project mp-4429):
+# real Z=6 cell a=7.925 b=7.32 c=7.065 A, alpha=90.055 beta=95.217
+# gamma=103.42 deg (V=396.9 A^3, G=0.938).
+#
+# lattice_bounds below is edge lengths from the REAL Z=6 cell scaled by
+# (1/6)^(1/3)=0.550 (a 5-atom Z=1 unit should occupy ~1/6 the real
+# cell's volume) -- first version of this fixture left a,b,c at the
+# real Z=6 scale while max_formula_units allowed the search to pick
+# Z=1, and every lattice parameter pinned at its own bound edge as a
+# result (err_norm=8.53): the box literally could not reach a volume
+# anywhere near volume_constraint's own (correctly Z=1-scaled) auto
+# band, since even the box's SMALLEST corner (a=6.5,b=6.0,c=6.0) is
+# ~2x too large in volume terms for 5 atoms. See the mizuho-py-
+# wychoff-position plan's phase I-3 for the full diagnosis. Angle
+# bounds are widened well beyond the real Z=6 angles (rather than
+# scaled, since angles are size-independent) specifically because a
+# drastically simplified 5-atom local-constraint problem has much more
+# freedom than the real, fully-constrained structure and may
+# genuinely prefer a different -- not necessarily wrong -- shape;
+# cell_validity_constraint's own g_min is what guards against genuine
+# degeneracy, not a tight angle box.
+#
+# Charge balance: Ca(+2) + Si(+4) + 3*O(-2) = 2 + 4 - 6 = 0.
+composition: CaSiO3
+spacegroup: 2
+spacegroup_symbol: P-1
+
+ionic_charges:
+  Ca: 2
+  Si: 4
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [3.5, 5.5]
+  b: [3.2, 5.2]
+  c: [3.1, 5.1]
+  alpha: [70.0, 110.0]
+  beta:  [75.0, 115.0]
+  gamma: [85.0, 125.0]
+
+bond_constraints:
+  - atom1: Si
+    atom2: O
+    distance_min: 1.55
+    distance_max: 1.70
+    weight: 1.0
+  - atom1: Ca
+    atom2: O
+    distance_min: 2.30
+    distance_max: 2.60
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Si
+    atom_neighbor: O
+    angle_min: 100.0
+    angle_max: 120.0
+    weight: 1.5
+
+coordination_constraints:
+  - center_atom: Si
+    neighbor_atom: O
+    cn_min: 4
+    cn_max: 4
+    cutoff_distance: 1.85
+    weight: 1.5
+  - center_atom: Ca
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 7
+    cutoff_distance: 2.75
+    weight: 1.5
+
+# Auto-computed from composition (phase I-3, see the mizuho-py-wychoff-
+# position plan). volume_constraint's Hazen estimate here (V_est=68.76
+# A^3 for the 5-atom Z=1 unit) is close to the Z=1-equivalent real
+# volume (396.9/6=66.15 A^3) -- the auto default was correct all along;
+# it was lattice_bounds that needed correcting to match it (see above).
+volume_constraint: {}
+aspect_ratio_constraint: {}
+cell_validity_constraint: {}
+
+tree_search:
+  max_sites: 5
+  max_formula_units: 1
+
+optimization:
+  n_restarts: 8
+  cma_maxiter: 300
+  refine_maxiter: 400
+  seed: 42

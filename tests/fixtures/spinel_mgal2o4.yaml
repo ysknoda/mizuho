@@ -1,0 +1,101 @@
+# Spinel MgAl2O4, space group 227 (Fd-3m). Cubic, single lattice
+# parameter -- deliberately a FAST, high-symmetry generalisation check
+# (see the mizuho-py-wychoff-position plan's Phase B-2 section): two
+# cations sharing one bridging anion, the same overall pattern as
+# Adamite's As/Zn-O coupling, but with far fewer combinatorial Wyckoff
+# choices, so the full search + staged feasibility ranking + Phase-D
+# seeded optimisation pipeline should complete end to end in a
+# practical time, unlike Adamite's ~70,000-candidate case.
+#
+# Mg: tetrahedral (CN=4), Al: octahedral (CN=6), both coordinated by O.
+# Charge balance: Mg(+2) + 2*Al(+3) + 4*O(-2) = 2 + 6 - 8 = 0.
+composition: MgAl2O4
+spacegroup: 227
+spacegroup_symbol: Fd-3m
+
+ionic_charges:
+  Mg: 2
+  Al: 3
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [7.4, 8.6]
+
+bond_constraints:
+  - atom1: Mg
+    atom2: O
+    distance_min: 1.85
+    distance_max: 2.05
+    weight: 1.0
+  - atom1: Al
+    atom2: O
+    distance_min: 1.85
+    distance_max: 2.00
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Mg
+    atom_neighbor: O
+    angle_min: 95.0
+    angle_max: 125.0
+    weight: 1.0
+  - atom_center: Al
+    atom_neighbor: O
+    angle_min: 75.0
+    angle_max: 105.0
+    weight: 1.0
+
+coordination_constraints:
+  - center_atom: Mg
+    neighbor_atom: O
+    cn_min: 4
+    cn_max: 4
+    # Measured at the reference structure (docs/adr/0004-...): the Mg-O
+    # first shell sits at 1.918 A and the second at 3.384 A, so the
+    # cutoff goes at the midpoint of that 1.466 A gap. The former 2.2 A
+    # was inside the gap but only 0.28 A above the first shell, which is
+    # less than 3x the 0.10 A logistic smoothing width -- the soft count
+    # never saturated, reporting 3.78 rather than 4 and charging a
+    # permanent penalty at the correct structure.
+    cutoff_distance: 2.651
+    weight: 1.5
+  - center_atom: Al
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 6
+    # Measured likewise: Al-O first shell 1.929 A, second 3.332 A.
+    cutoff_distance: 2.630
+    weight: 1.5
+
+# Explicit volume_min/volume_max, NOT the auto-computed default -- the
+# Hazen-type additive estimate for this composition (V_est=635.0 A^3,
+# would auto-band to [508.0,920.8]) is measurably too high for MgAl2O4
+# specifically (real cell ~529 A^3; this fixture's own CN/bond-optimal
+# tight-bounds solution is ~458.72 A^3), and verified empirically to
+# regress this fixture's error 0.004053 -> 0.010437 if left on
+# defaults (see the mizuho-py-wychoff-position plan's phase I-3). The
+# band below is chosen to comfortably contain both of those values
+# (only a loose safety net against gross runaway is needed here, since
+# spinel's own low dimensionality already made it robust to wide
+# lattice_bounds even before volume_constraint existed).
+volume_constraint:
+  volume_min: 400.0
+  volume_max: 700.0
+
+tree_search:
+  # SG227's smallest available multiplicities are 8/16/32 (Z=8 for the
+  # conventional cell), so the minimal valid combination (one Mg site +
+  # one Al site + one O site) already needs max_formula_units=8 -- a
+  # much smaller value silently finds ZERO candidates (confirmed
+  # empirically), not a slow/incomplete search.
+  max_sites: 4
+  max_formula_units: 8
+
+optimization:
+  n_restarts: 6
+  cma_maxiter: 250
+  refine_maxiter: 300
+  seed: 42

@@ -1,0 +1,121 @@
+# Diopside CaMgSi2O6, space group 15 (C2/c). Monoclinic (4 lattice
+# params: a,b,c,beta free; alpha=gamma=90 deg fixed) -- phase I-3's
+# second generalisation check for cell_validity_constraint /
+# aspect_ratio_constraint, at a genuinely lower symmetry than adamite/
+# spinel/topaz but one still far more tractable than a full triclinic
+# case: C2/c's Wyckoff multiplicities (4-fold special M1/M2 sites via
+# the 2-fold axis, 8-fold general T/O sites) let the real Z=4 cell be
+# represented directly, unlike wollastonite_casio3.yaml's necessary
+# simplification.
+#
+# Pyroxene-type structure: corner-sharing SiO4 tetrahedral chains
+# cross-linked by Mg (octahedral, CN=6) and Ca (larger, CN=8) polyhedra.
+#
+# Source (WebSearch, cross-checked against Materials Project mp-6766):
+# a=9.746 b=8.899 c=5.251 A, beta=105.79 deg, V=438.23 A^3.
+# Ca-O 2.35-2.82 A, Mg-O 2.08-2.16 A (Wikipedia/Handbook of Mineralogy-
+# sourced). Si-O ~1.60-1.65 A is standard silicate-tetrahedron chemistry
+# (not diopside-specific data), matching the same range already used in
+# adamite.yaml/topaz.yaml/wollastonite_casio3.yaml for other Si-O /
+# As-O tetrahedra.
+#
+# Charge balance: Ca(+2) + Mg(+2) + 2*Si(+4) + 6*O(-2) = 2+2+8-12 = 0.
+composition: CaMgSi2O6
+spacegroup: 15
+spacegroup_symbol: C2/c
+
+ionic_charges:
+  Ca: 2
+  Mg: 2
+  Si: 4
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [9.2, 10.3]
+  b: [8.4, 9.4]
+  c: [4.9, 5.6]
+  beta: [98.0, 113.0]
+
+bond_constraints:
+  - atom1: Si
+    atom2: O
+    distance_min: 1.55
+    distance_max: 1.70
+    # Measured at the reference structure (ADR-0004): Si-O first
+    # shell ends 1.686 A, second starts 3.165 A. The default
+    # distance_max*1.5 swept the second shell in and penalised it.
+    cutoff: 2.425
+    weight: 1.0
+  - atom1: Mg
+    atom2: O
+    distance_min: 2.00
+    distance_max: 2.20
+    # Measured at the reference structure (ADR-0004): Mg-O first
+    # shell ends 2.116 A, second starts 3.372 A. The default
+    # distance_max*1.5 swept the second shell in and penalised it.
+    cutoff: 2.744
+    weight: 1.0
+  - atom1: Ca
+    atom2: O
+    distance_min: 2.30
+    distance_max: 2.85
+    # Measured at the reference structure (ADR-0004): Ca-O first
+    # shell ends 2.719 A, second starts 3.47 A. The default
+    # distance_max*1.5 swept the second shell in and penalised it.
+    cutoff: 3.095
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Si
+    atom_neighbor: O
+    angle_min: 100.0
+    angle_max: 120.0
+    weight: 1.5
+
+coordination_constraints:
+  - center_atom: Si
+    neighbor_atom: O
+    cn_min: 4
+    cn_max: 4
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 2.425
+    weight: 1.5
+  - center_atom: Mg
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 6
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 2.744
+    weight: 1.5
+  - center_atom: Ca
+    neighbor_atom: O
+    cn_min: 7
+    cn_max: 8
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 3.095
+    weight: 1.5
+
+# Auto-computed from composition (phase I-3, see the mizuho-py-wychoff-
+# position plan). cell_validity_constraint's default g_min=0.3 should be
+# far from binding here -- a single free angle (beta) near 106 deg gives
+# G ~0.93 at the real structure, nowhere near the degenerate limit;
+# included mainly for the same reason volume_constraint/
+# aspect_ratio_constraint are (a persistent, always-on safety net) and
+# to cross-check the term's implementation on a second, independent
+# monoclinic/triclinic fixture.
+volume_constraint: {}
+aspect_ratio_constraint: {}
+cell_validity_constraint: {}
+
+tree_search:
+  max_sites: 9
+  max_formula_units: 4
+
+optimization:
+  n_restarts: 8
+  cma_maxiter: 300
+  refine_maxiter: 400
+  seed: 42

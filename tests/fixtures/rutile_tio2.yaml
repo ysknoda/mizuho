@@ -1,0 +1,43 @@
+# Rutile TiO2, space group 136 (P4_2/mnm).
+# Tetragonal (2 lattice params) + one non-trivial free Wyckoff parameter
+# (O's x). The main test that the numerical optimizer actually converges
+# a real free parameter, not just symmetry-fixed positions.
+composition: TiO2
+spacegroup: 136
+spacegroup_symbol: P4_2/mnm
+
+ionic_charges:
+  Ti: 4
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [4.0, 5.2]
+  c: [2.5, 3.5]
+
+bond_constraints:
+  - atom1: Ti
+    atom2: O
+    distance_min: 1.85
+    distance_max: 2.05
+    weight: 1.0
+
+coordination_constraints:
+  - center_atom: Ti
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 6
+    cutoff_distance: 2.2
+    weight: 3.0
+
+tree_search:
+  max_sites: 4
+  max_formula_units: 2
+
+optimization:
+  n_restarts: 4
+  cma_maxiter: 100
+  refine_maxiter: 200
+  seed: 42

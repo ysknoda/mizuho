@@ -1,0 +1,47 @@
+# CaTiO3 perovskite, space group 221 (Pm-3m).
+# Ternary ionic (3 elements) tree search with a wildcard neighbor-match
+# coordination constraint. Charge balance: Ca(+2) + Ti(+4) + 3*O(-2) = 0.
+composition: CaTiO3
+spacegroup: 221
+spacegroup_symbol: Pm-3m
+
+ionic_charges:
+  Ca: 2
+  Ti: 4
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [3.5, 4.5]
+
+bond_constraints:
+  - atom1: Ti
+    atom2: O
+    distance_min: 1.85
+    distance_max: 2.05
+    weight: 1.0
+  - atom1: Ca
+    atom2: O
+    distance_min: 2.60
+    distance_max: 2.90
+    weight: 1.0
+
+coordination_constraints:
+  - center_atom: Ti
+    neighbor_atom: X
+    cn_min: 6
+    cn_max: 6
+    cutoff_distance: 2.2
+    weight: 3.0
+
+tree_search:
+  max_sites: 6
+  max_formula_units: 2
+
+optimization:
+  n_restarts: 4
+  cma_maxiter: 100
+  refine_maxiter: 200
+  seed: 42

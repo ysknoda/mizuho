@@ -1,0 +1,30 @@
+# Diamond-cubic Si, space group 227 (Fd-3m).
+# Covalent / zero-charge mode (no ionic_charges given), monoatomic.
+# Exercises the zero-charge branch of discover_compositions (Phase 1
+# bug fix: this always returned [] before the fix).
+composition: Si
+spacegroup: 227
+spacegroup_symbol: Fd-3m
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [4.5, 6.5]
+
+bond_constraints:
+  - atom1: Si
+    atom2: Si
+    distance_min: 2.2
+    distance_max: 2.5
+    weight: 1.0
+
+tree_search:
+  max_sites: 2
+  max_formula_units: 8   # SG227's smallest Wyckoff multiplicity is 8 (8a/8b)
+
+optimization:
+  n_restarts: 4
+  cma_maxiter: 150
+  refine_maxiter: 200
+  seed: 42

@@ -1,0 +1,135 @@
+# Adamite Zn2(AsO4)(OH), space group 58 (Pnnm). Orthorhombic (3 lattice
+# params). This is the mineral that originally motivated the whole
+# mizuho-py-wychoff-position generalisation plan (Phase A-D, B-2, B-3):
+# with wyckoff_assignment supplied directly, a good structure (error
+# 8.42) was reachable, but fully automatic discovery (composition +
+# bonding constraints + space group only) could not find it -- Zn must
+# split across TWO distinct 4-fold Wyckoff sites and O across THREE
+# distinct sites to reach the real Z=4 cell (see
+# tests/unit/test_ratio_consistency.py's module docstring), a topology
+# best-first search's original surrogate_score buried tens of thousands
+# of candidates deep. This fixture is the final gate: no
+# wyckoff_assignment, fully automatic, at the SAME combinatorial scale
+# as the original investigation (max_sites=9, max_formula_units=4 ->
+# 69,974 total candidates).
+#
+# Charge balance: 2*Zn(+2) + As(+5) + 5*O(-2) + H(+1)
+#               = 4 + 5 - 10 + 1 = 0.
+composition: O5Zn2AsH
+spacegroup: 58
+spacegroup_symbol: Pnnm
+
+ionic_charges:
+  Zn: 2
+  As: 5
+  O: -2
+  H: 1
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [7.8, 8.8]
+  b: [8.0, 9.0]
+  c: [5.6, 6.5]
+
+bond_constraints:
+  - atom1: As
+    atom2: O
+    distance_min: 1.60
+    distance_max: 1.75
+    # Measured at tests/fixtures/reference/adamite.cif (ADR-0004):
+    # As-O first shell ends 1.814 A, second starts 3.004 A.
+    cutoff: 2.409
+  - atom1: Zn
+    atom2: O
+    distance_min: 1.90
+    distance_max: 2.15
+    # Measured at tests/fixtures/reference/adamite.cif (ADR-0004):
+    # Zn-O first shell ends 2.29 A, second starts 3.272 A.
+    cutoff: 2.781
+
+angle_constraints:
+  - atom_center: As
+    atom_neighbor: O
+    angle_min: 100.0
+    angle_max: 120.0
+    weight: 1.0
+  - atom_center: Zn
+    # Measured at the reference structure (ADR-0004): the realised
+    # O-Zn-O range is 78.6-125.9 deg. Zn1 is a trigonal bipyramid, whose
+    # equatorial angles legitimately exceed the former 120 deg ceiling.
+    atom_neighbor: O
+    angle_min: 75.0
+    angle_max: 130.0
+    weight: 1.0
+
+coordination_constraints:
+  # Stated explicitly rather than left to augment_coupling_constraints:
+  # that helper derives its cutoff from max(bond distance_max) = 2.15 A,
+  # only 0.14 A past the longest real Zn-O bond, so the logistic soft
+  # count never saturates. Measured here instead (ADR-0004): the
+  # O-cation first shell ends 2.290 A, the second starts 3.004 A.
+  - center_atom: O
+    neighbor_atom: X
+    cn_min: 2
+    cn_max: 4
+    cutoff_distance: 2.647
+    weight: 1.0
+
+  - center_atom: As
+    neighbor_atom: O
+    cn_min: 4
+    cn_max: 4
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 2.409
+    weight: 1.5
+  - center_atom: Zn
+    neighbor_atom: O
+    cn_min: 5
+    cn_max: 6
+    # Measured at the reference structure (ADR-0004).
+    cutoff_distance: 2.781
+    weight: 1.5
+
+# auto_coupling_exclude_hh (default true) will make augment_coupling_
+# constraints inject an O-centred angle_constraint with
+# exclude_neighbor_pairs: [[H, H]] automatically, since H is present --
+# no manual configuration needed here (see config.py).
+
+# All fields auto-computed from composition via the Hazen-type additive
+# volume rule (V_est=448.6 A^3 here, band [358.8,650.4] -- brackets the
+# real adamite cell, ~427-434 A^3). Keeps the lattice from drifting to
+# an unphysical size regardless of how wide lattice_bounds is; verified
+# empirically to fix a runaway to V~5300 A^3 under lattice_bounds
+# widened to [1,30] on every axis (2.6x lower error, no more edge-
+# pinning). Impact on this fixture's own (already tight) lattice_bounds
+# verified separately -- see the mizuho-py-wychoff-position plan's
+# phase I-3.
+volume_constraint: {}
+
+tree_search:
+  max_sites: 9
+  max_formula_units: 4
+  # feasibility_shortlist left unset deliberately: rank_by_feasibility_
+  # staged's cost-aware default (Phase B-3.2/B-3.4) sizes it from real
+  # measured per-candidate cost rather than a fixed guess -- see the
+  # mizuho-py-wychoff-position plan's Phase B-3 section.
+  #
+  # max_candidates deliberately left UNSET: it doubles as BOTH
+  # wyckoff_tree_search's own raw search budget (how many leaves the
+  # best-first algorithm accepts before stopping) AND, via pipeline.py's
+  # shared default lookup, search_and_rank's post-ranking Phase-2
+  # truncation count -- setting it small here would starve the raw
+  # search itself, not just bound Phase 2's cost, and defeat
+  # tests/integration/test_pipeline_adamite.py's own point (finding
+  # adamite's real multi-site topology needs the FULL search; only the
+  # FINAL, post-ranking truncation should be small, and that test
+  # controls it directly via search_and_rank's own function argument
+  # instead of this key).
+
+optimization:
+  n_restarts: 8
+  cma_maxiter: 300
+  refine_maxiter: 400
+  seed: 42

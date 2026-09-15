@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mizuho"
+version = "0.1.0a1"
+description = "Automatic crystal structure prediction from composition, bonding, and space-group/Wyckoff-position constraints"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Yusuke Noda" },
+]
+keywords = [
+    "crystal-structure-prediction",
+    "crystallography",
+    "space-group",
+    "wyckoff-positions",
+    "materials-science",
+    "inorganic-chemistry",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "PyYAML>=6.0",
+    "cma>=3.3",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "spglib>=2.0",
+]
+# optimization.backend = "tpe" (Optuna TPESampler -- see
+# optimize/optuna_backend.py).
+bayesian = [
+    "optuna>=3.0",
+]
+# optimization.backend = "gp"/"bayesian" (Optuna GPSampler -- Gaussian-
+# Process-based Bayesian optimisation, see optimize/optuna_backend.py).
+# Needs optuna>=3.6 (GPSampler was added in that release) and torch (GP
+# fitting + acquisition-function optimisation both use torch's autograd);
+# greenlet is not strictly required but lets GPSampler parallelise its
+# acquisition-function local searches instead of falling back to a
+# measurably slower sequential loop.
+gp = [
+    "optuna>=3.6",
+    "torch",
+    "greenlet",
+]
+# optimization.backend = "mcmc" -- see optimize/mcmc.py.
+mcmc = [
+    "emcee>=3.1",
+]
+# Transparently accelerates lattice.pairwise_distances_pbc (the sole
+# O(N^2 x 27) term in the objective function, called once per Stage-1
+# evaluation -- see phase H-2) with an explicit-loop @njit kernel.
+# Purely a speed/memory optimisation: no new optimization.backend
+# value, no new YAML key -- absence just means the existing pure-NumPy
+# implementation is used, unchanged from every prior phase.
+numba = [
+    "numba>=0.59",
+]
+# optimization.refine_jac = true -- supplies Stage 2's local refinement
+# (scipy.optimize.minimize) with an exact analytic gradient for the
+# coordination-number and volume penalty terms via JAX autodiff,
+# instead of scipy's default finite-difference approximation (see
+# objective/energy_jax.py, phase I-2). Requires jax_enable_x64 (set at
+# import time in energy_jax.py) since JAX defaults to float32, which is
+# insufficient for this project's sub-Angstrom coordinate precision.
+jax = [
+    "jax>=0.4",
+]
+
+[project.scripts]
+mizuho = "mizuho.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ysknoda/mizuho"
+Repository = "https://github.com/ysknoda/mizuho"
+
+[tool.setuptools.packages.find]
+include = ["mizuho", "mizuho.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: end-to-end tests that run a real (small-budget) search/optimisation pipeline",
+]
