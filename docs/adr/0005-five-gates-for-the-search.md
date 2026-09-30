@@ -73,3 +73,11 @@ reader does not mistake a tuned pass for a robust one.
   regression gate, and repeat — **capped at two rounds**. Anything still standing is recorded as
   `xfail` with its full diagnosis. Reaching a third round means a third mechanism exists and the
   design, not the parameters, needs revisiting.
+
+## Amended by ADR-0011 and ADR-0012
+
+The rank-gate results recorded above — spinel, diopside and topaz passing, adamite failing, topaz
+"with zero margin" — were single draws from an unseeded Phase 1 and do not reproduce: a second run
+put diopside at 163 and topaz at 26. ADR-0012 seeds Phase 1 and judges the gate on the worst rank
+over five seeds. ADR-0011 makes the gate compare equivalence classes of Wyckoff assignments rather
+than literal letters.

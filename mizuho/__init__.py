@@ -9,7 +9,7 @@ from .search.dfs import wyckoff_tree_search
 from .search.spacegroup_search import spacegroup_auto_search
 from .structure import build_bounds, build_structure
 
-__version__ = "0.1.0a1"
+__version__ = "0.1.0a2"
 
 __all__ = [
     "parse_composition",

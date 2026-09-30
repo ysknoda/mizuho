@@ -140,6 +140,7 @@ uniqueness. It does not.
   chosen against geometry rather than against error values precisely so that it survives the choice,
   but the gates cannot be trusted while the thing they measure differs from the thing being
   optimised. This is recorded as an open question, not a settled decision.
+  **Resolved by ADR-0009**: the switch is removed and the objective always normalises.
 - Uniqueness is not provable. The global-minimum gate of ADR-0005 tests it where we can reach, the
   impostor regression pins the cases we found, and ADR-0005's two-round cap stops the hunt from
   running forever.

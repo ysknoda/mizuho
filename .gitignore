@@ -37,3 +37,6 @@ legacy/
 .code-check/
 .github_release/
 .pip_preparation/
+
+# Others
+references/

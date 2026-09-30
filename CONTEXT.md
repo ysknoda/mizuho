@@ -46,6 +46,22 @@ _Avoid_: equivalent positions, multiplicity set
 One Wyckoff assignment together with the parameter vector being optimised for it.
 _Avoid_: trial, solution
 
+**Euclidean normalizer**:
+The metric-preserving affine maps that carry a space group onto itself. Its discrete part (origin
+shifts, extra point operations) relates Wyckoff letters that describe the same crystal; its
+continuous part is the floating origin of a polar space group.
+_Avoid_: normaliser group (as a synonym for the space group itself)
+
+**Equivalent assignments**:
+Two Wyckoff assignments related by the Euclidean normalizer, and therefore the same crystal —
+spinel's `Mg@a Al@d O@e` and `Mg@b Al@c O@e`. Merged before Phase 1 ranking.
+_Avoid_: orbit (reserved for the point orbit of one Wyckoff position), duplicate topology
+
+**Free-parameter stratum**:
+The candidates of one space group that share the same number of free Wyckoff coordinates. The
+ranking surrogate favours low-count strata systematically.
+_Avoid_: tier, level
+
 ### Scoring
 
 **Coordination number (CN)**:
@@ -74,6 +90,18 @@ The logistic-weighted neighbour count the coordination term actually evaluates, 
 a gradient. A numerical device, **not** the definition of a coordination number: a structure can
 hold a soft count of 7.187 while its integer coordination is 6.
 _Avoid_: CN (unqualified), smoothed CN
+
+**Detected space group**:
+The space group spglib finds in an optimised structure at a stated tolerance, as opposed to the
+group the search optimised in. A structure searched in a subgroup can be detected in a higher
+group. Success is judged on this, not on the label the search returned.
+_Avoid_: found space group, result space group
+
+**Polytype family**:
+Structures a composition's first-shell constraints cannot tell apart because they differ only in
+how identical coordination units are stacked or linked — cubic and hexagonal diamond, wurtzite and
+zinc blende, rutile and anatase. Reported as a set, not resolved.
+_Avoid_: polymorph (broader: polymorphs may differ in coordination, which the constraints do see)
 
 **Impostor**:
 A structure the objective scores at or below the published one while its lattice is outside the 3%

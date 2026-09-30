@@ -75,7 +75,11 @@ whichever impostor gates fail before their fix lands.
 Ordered by dependency, **not** by expected impact, so each effect is a measured difference rather
 than an inference. Gates are re-run between phases.
 
-### Phase 0 — settle `normalize_penalties`
+### Phase 0 — settle `normalize_penalties` (resolved by ADR-0009)
+
+**Resolved.** ADR-0009 removes the switch and always normalises. It is implemented as step 1 of
+`plan-verification-and-tree-search.md`, before any new baseline is recorded. The original text
+is kept below for the record.
 
 Every search run in this project uses `true`; the fixtures set it nowhere and so default to `false`,
 which is what the ADR-0003 gate measures. Adamite's impostor exists under `true` and not under
@@ -181,7 +185,10 @@ Not "all gates green" alone. Changing the objective changes its landscape.
 A third round means a third mechanism exists, and the design rather than the parameters needs
 revisiting.
 
-## Open question
+## Open question (resolved)
+
+Resolved by ADR-0009. This plan now runs as step 6 of `plan-verification-and-tree-search.md`,
+and corundum, quartz, anatase and forsterite join its fixtures there. The original text:
 
 **Phase 0 blocks everything.** `normalize_penalties` is `true` in every search run and `false` in
 every fixture and therefore in the ADR-0003 gate. Adamite's impostor exists under one and not the
