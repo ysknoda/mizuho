@@ -27,13 +27,15 @@ lattice_bounds:
 bond_constraints:
   - atom1: Mg
     atom2: O
-    distance_min: 1.85
-    distance_max: 2.05
+    # Band: reference span 1.918 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.87
+    distance_max: 1.96
     weight: 1.0
   - atom1: Al
     atom2: O
-    distance_min: 1.85
-    distance_max: 2.00
+    # Band: reference span 1.929 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.89
+    distance_max: 1.97
     weight: 1.0
 
 angle_constraints:
@@ -69,6 +71,26 @@ coordination_constraints:
     # Measured likewise: Al-O first shell 1.929 A, second 3.332 A.
     cutoff_distance: 2.630
     weight: 1.5
+  # Polymerisation (phase C), a control: each O bonds one Mg and three Al
+  # (8 Mg x 4 + 16 Al x 6 = 32 + 96 over 32 O). Already satisfied; if it
+  # broke the reference, the constraint or its cutoff would be wrong.
+  - center_atom: O
+    neighbor_atom: Mg
+    cn_min: 1
+    cn_max: 1
+    cutoff_distance: 2.651
+    weight: 1.0
+  - center_atom: O
+    neighbor_atom: Al
+    cn_min: 3
+    cn_max: 3
+    cutoff_distance: 2.630
+    weight: 1.0
+
+# Auto O(X) coupling cutoff measured at the reference (ADR-0004, phase A):
+# O-cation first shell 1.929 A, second 3.332 A. The bond-derived default
+# (2.050) left the soft count at 3.102 where the structure has 4.
+auto_coupling_cutoff: 2.630
 
 # Explicit volume_min/volume_max, NOT the auto-computed default -- the
 # Hazen-type additive estimate for this composition (V_est=635.0 A^3,

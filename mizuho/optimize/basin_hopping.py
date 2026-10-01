@@ -17,6 +17,7 @@ import numpy as np
 from scipy.optimize import basinhopping
 
 from .._parallel_utils import run_parallel_tasks
+from .cma import restart_seed
 from .init_guess import (
     _apply_lattice_gradient_hint, _estimate_lattice_x0, _smart_init_x0,
 )
@@ -147,7 +148,7 @@ def multistart_basin_hopping(
         if verbose:
             print(f"      [BH restart {restart+1}/{n_restarts}] {tag}")
 
-        run_seed = None if seed is None else int(seed) + restart
+        run_seed = restart_seed(seed, restart)
         tasks.append((objective, x0, maxiter, stepsize, T, minimizer_kwargs, run_seed))
 
     # ---- Pass 2: run each restart's basinhopping, sequentially or

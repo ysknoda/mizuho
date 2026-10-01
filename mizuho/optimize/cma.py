@@ -19,6 +19,18 @@ from .init_guess import (
 )
 
 
+def restart_seed(seed, restart: int):
+    """Seed for one restart of a multistart run, or None when unseeded.
+
+    Derived through numpy's SeedSequence so restarts, and runs at
+    consecutive seeds, draw independent streams. The former `seed +
+    restart` made seed s's restart 1 replay seed s+1's restart 0, so the
+    five consecutive seeds of ADR-0012's rank spread were not independent."""
+    if seed is None:
+        return None
+    return int(np.random.SeedSequence([int(seed), int(restart)]).generate_state(1)[0])
+
+
 def _cma_es(
         objective,
         x0,
@@ -102,7 +114,12 @@ def _cma_es(
         "verb_log": 0,   # and its on-disk logging
     }
     if seed is not None:
-        opts["seed"] = int(seed)
+        # pycma reads seed 0 (like None) as "seed from the clock", so a
+        # caller's seed 0 -- e.g. multistart's `seed + restart` at restart 0
+        # with seed 0 -- silently ran unseeded. Mapped to a fixed nonzero
+        # value instead; any collision with a real caller seed of 2**32 - 1
+        # is immaterial.
+        opts["seed"] = int(seed) if int(seed) != 0 else 2**32 - 1
 
     es = _cma.CMAEvolutionStrategy(to_norm(x0), sigma0, opts)
 
@@ -325,7 +342,7 @@ def multistart_cma_es(
         if verbose:
             print(f"      [Restart {restart+1}/{n_restarts}] {tag}")
 
-        run_seed = None if seed is None else int(seed) + restart
+        run_seed = restart_seed(seed, restart)
         tasks.append((objective, x0, bounds, sigma0, maxiter, tol, run_seed,
                       periodic_mask, plateau_patience, plateau_rel_tol, verbose))
 

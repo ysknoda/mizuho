@@ -1,0 +1,109 @@
+# Forsterite Mg2SiO4, space group 62 (Pnma), Z = 4. Olivine structure.
+# Reference: tests/fixtures/reference/forsterite_Pbnm.cif (COD 9016385),
+# supplied in the Pbnm setting; the reader converts it to mizuho's Pnma
+# (a = 10.190, b = 5.978, c = 4.753 A). forsterite_Pnma.cif is a separate
+# refinement used as the setting-independence cross-check.
+#
+# Cited coordination numbers: Mg 6 (both M1 and M2 octahedral), Si 4,
+# O 4 (three Mg and one Si). Values measured at the reference (ADR-0004,
+# ADR-0007): Mg-O 2.045-2.210 A (next 3.428), Si-O 1.614-1.655 A (next
+# 3.140), O-cation 1.614-2.210 A (next 3.140).
+#
+# Charge balance: 2*Mg(+2) + Si(+4) + 4*O(-2) = 0.
+composition: Mg2SiO4
+spacegroup: 62
+spacegroup_symbol: Pnma
+
+ionic_charges:
+  Mg: 2
+  Si: 4
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [9.2, 11.2]
+  b: [5.4, 6.6]
+  c: [4.3, 5.3]
+
+bond_constraints:
+  - atom1: Mg
+    atom2: O
+    # Span 2.045-2.210 A widened by 2% (ADR-0007).
+    distance_min: 2.00
+    distance_max: 2.26
+    cutoff: 2.819
+    weight: 1.0
+  - atom1: Si
+    atom2: O
+    # Span 1.614-1.655 A widened by 2% (ADR-0007).
+    distance_min: 1.58
+    distance_max: 1.69
+    cutoff: 2.397
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Mg
+    atom_neighbor: O
+    # Measured 71.87-109.99 deg below the 150 deg trans threshold.
+    angle_min: 70.0
+    angle_max: 110.0
+    angle_cutoff: 2.819
+    weight: 1.0
+  - atom_center: Si
+    atom_neighbor: O
+    # Measured 101.84-116.05 deg.
+    angle_min: 100.0
+    angle_max: 120.0
+    angle_cutoff: 2.397
+    weight: 1.5
+
+coordination_constraints:
+  - center_atom: Mg
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 6
+    cutoff_distance: 2.819
+    weight: 1.5
+  - center_atom: Si
+    neighbor_atom: O
+    cn_min: 4
+    cn_max: 4
+    cutoff_distance: 2.397
+    weight: 1.5
+  - center_atom: O
+    neighbor_atom: X
+    cn_min: 4
+    cn_max: 4
+    cutoff_distance: 2.675
+    weight: 1.0
+  # Polymerisation: an orthosilicate, each O bonds exactly one Si and
+  # three Mg (4 Si x 4 = 16 Si-O and 8 Mg x 6 = 48 Mg-O over 16 O).
+  - center_atom: O
+    neighbor_atom: Si
+    cn_min: 1
+    cn_max: 1
+    cutoff_distance: 2.397
+    weight: 1.0
+  - center_atom: O
+    neighbor_atom: Mg
+    cn_min: 3
+    cn_max: 3
+    cutoff_distance: 2.819
+    weight: 1.0
+
+# Cutoff for the auto X-O-X angle constraint injected beside the explicit
+# O(X) coordination constraint: the same measured O cutoff (ADR-0004).
+auto_coupling_cutoff: 2.675
+
+tree_search:
+  max_sites: 7
+  max_formula_units: 4
+  feasibility_shortlist: 60
+
+optimization:
+  n_restarts: 8
+  cma_maxiter: 300
+  refine_maxiter: 400
+  seed: 42

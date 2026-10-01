@@ -19,10 +19,43 @@ _SCALE_EPS = 1e-6   # Same order as the overlap term's identical-coordinate
                      # zero-width band centred at 0) cannot divide by zero.
 
 
+def reject_removed_keys(config: dict) -> None:
+    """Refuse a config that still sets a key whose behaviour was removed.
+
+    Silently ignoring such a key would let a user believe it still does
+    something (docs/adr/0009-always-normalise-penalties.md)."""
+    if "normalize_penalties" in config:
+        raise ValueError(
+            "config key 'normalize_penalties' was removed: penalty "
+            "normalisation is always on (docs/adr/0009-always-normalise-"
+            "penalties.md). Delete the key from the config.")
+
+
 def _penalty(v, vmin, vmax, w=1.0, scale=1.0) -> float:
     if v < vmin: return w*((vmin-v)/scale)**2
     if v > vmax: return w*((v-vmax)/scale)**2
     return 0.0
+
+
+# ADR-0007: a cation-centred soft coordination number may stray at most
+# this far from an integer before the integrality penalty applies. Chosen
+# from data: worst reference 0.0179 (adamite Zn), mildest impostor 0.1865
+# (diopside Ca).
+INTEGRALITY_CEILING = 0.05
+
+
+def _integrality_applies(center: str, charges: Dict[str, float]) -> bool:
+    """Integrality binds cation-centred and covalent (uncharged) centres.
+    Anion-centred counts are exempt: the number of cations around an anion
+    is not a discrete polyhedron (diopside's O deviates 0.127 at its own
+    published structure, ADR-0007)."""
+    return charges.get(center, 0) >= 0
+
+
+def _integrality_penalty(cn: float, w: float, scale: float) -> float:
+    """Dead-band penalty on |CN - round(CN)|, in the parent coordination
+    constraint's weight and scale (so it adds no free parameter)."""
+    return _penalty(abs(cn - round(cn)), 0.0, INTEGRALITY_CEILING, w, scale=scale)
 
 
 def _midpoint_scale(vmin, vmax, eps: float = _SCALE_EPS) -> float:

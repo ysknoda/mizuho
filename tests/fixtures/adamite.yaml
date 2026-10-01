@@ -36,15 +36,17 @@ lattice_bounds:
 bond_constraints:
   - atom1: As
     atom2: O
-    distance_min: 1.60
-    distance_max: 1.75
+    # Band: reference span 1.588-1.814 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.55
+    distance_max: 1.86
     # Measured at tests/fixtures/reference/adamite.cif (ADR-0004):
     # As-O first shell ends 1.814 A, second starts 3.004 A.
     cutoff: 2.409
   - atom1: Zn
     atom2: O
-    distance_min: 1.90
-    distance_max: 2.15
+    # Band: reference span 1.875-2.290 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.83
+    distance_max: 2.34
     # Measured at tests/fixtures/reference/adamite.cif (ADR-0004):
     # Zn-O first shell ends 2.29 A, second starts 3.272 A.
     cutoff: 2.781
@@ -54,6 +56,9 @@ angle_constraints:
     atom_neighbor: O
     angle_min: 100.0
     angle_max: 120.0
+    # Stated rather than left at 1.5 x distance_max: once phase E widened
+    # the bond bands, that implicit cutoff would move with them.
+    angle_cutoff: 2.409
     weight: 1.0
   - atom_center: Zn
     # Measured at the reference structure (ADR-0004): the realised
@@ -62,6 +67,10 @@ angle_constraints:
     atom_neighbor: O
     angle_min: 75.0
     angle_max: 130.0
+    # The measured shell cutoff (ADR-0004). Left implicit, 1.5 x the
+    # phase-E distance_max (2.34) = 3.51 A reached into the second shell
+    # (from 3.272 A) and scored 49 deg O-Zn-O angles at the reference.
+    angle_cutoff: 2.781
     weight: 1.0
 
 coordination_constraints:
@@ -91,11 +100,21 @@ coordination_constraints:
     # Measured at the reference structure (ADR-0004).
     cutoff_distance: 2.781
     weight: 1.5
+  # Polymerisation (phase C): isolated AsO4 plus hydroxyl, {0: 4, 1: 16}.
+  - center_atom: O
+    neighbor_atom: As
+    cn_min: 0
+    cn_max: 1
+    cutoff_distance: 2.409
+    weight: 1.0
 
-# auto_coupling_exclude_hh (default true) will make augment_coupling_
-# constraints inject an O-centred angle_constraint with
-# exclude_neighbor_pairs: [[H, H]] automatically, since H is present --
-# no manual configuration needed here (see config.py).
+# Cutoff for the auto X-O-X angle constraint phase B now injects beside
+# the explicit O(X) coordination constraint (ADR-0004, measured above).
+auto_coupling_cutoff: 2.647
+
+# auto_coupling_exclude_hh (default true) makes augment_coupling_
+# constraints add exclude_neighbor_pairs: [[H, H]] to the auto O-centred
+# angle constraint, since H is present (see config.py).
 
 # All fields auto-computed from composition via the Hazen-type additive
 # volume rule (V_est=448.6 A^3 here, band [358.8,650.4] -- brackets the

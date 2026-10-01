@@ -69,11 +69,6 @@ def _si_o3_param_vector():
      "volume_constraint": {"volume_min": 200.0, "volume_max": 800.0, "weight": 3.0},
      "aspect_ratio_constraint": {"ratio_max": 1.5, "weight": 4.0},
      "cell_validity_constraint": {"g_min": 0.99, "weight": 2.0}},
-    {"normalize_penalties": True,
-     "ionic_charges": {"Na": 3.0}, "charge_balance_weight": 2.0,
-     "volume_constraint": {"volume_min": 200.0, "volume_max": 800.0, "weight": 3.0},
-     "aspect_ratio_constraint": {"ratio_max": 1.5, "weight": 4.0},
-     "cell_validity_constraint": {"g_min": 0.99, "weight": 2.0}},
 ])
 def test_error_breakdown_total_matches_compute_error(extra):
     cfg = _single_atom_config(extra)

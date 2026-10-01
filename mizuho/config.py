@@ -139,8 +139,9 @@ def augment_coupling_constraints(config: dict) -> dict:
     Auto-inject a default anion-centred coordination_constraint (and,
     unless disabled, a matching angle_constraint) for every anion that
     some existing CATION-centred constraint already references as a
-    neighbour (directly or via wildcard "X") but that has no constraint
-    of its own as a center_atom.
+    neighbour (directly or via wildcard "X"), for each constraint type
+    that has no (anion, same-neighbours) constraint already. The cutoff
+    is `auto_coupling_cutoff` (a number, or {anion: cutoff}) when given.
 
     Without this, cation-centred constraints only ever "look outward"
     from the cation -- nothing ties a shared anion's several cation
@@ -174,8 +175,17 @@ def augment_coupling_constraints(config: dict) -> dict:
     angle_csts = list(config.get("angle_constraints", []))
     bond_csts  = config.get("bond_constraints", [])
 
-    existing_centers = ({c["center_atom"] for c in coord_csts}
-                         | {a["atom_center"] for a in angle_csts})
+    # An anion is left alone only for a constraint TYPE that already has
+    # an (anion, the-same-neighbours) pair. Keyed on the expanded neighbour
+    # set, so O(Ti) in TiO2 counts as O(X), while O(Si) in a silicate
+    # (a polymerisation constraint) does not suppress O(X). Keying on the
+    # centre alone let one explicit constraint silently delete both auto
+    # constraints (docs/plan-objective-uniqueness.md, phase B).
+    def _pair(center, neighbour):
+        return center, frozenset(_expand_wildcard(neighbour, present, center, ionic_q))
+
+    existing_coord = {_pair(c["center_atom"], c["neighbor_atom"]) for c in coord_csts}
+    existing_angle = {_pair(a["atom_center"], a["atom_neighbor"]) for a in angle_csts}
 
     coupled_anions = set()
     for c in coord_csts:
@@ -189,7 +199,7 @@ def augment_coupling_constraints(config: dict) -> dict:
             if ionic_q.get(ne, 0) < 0:
                 coupled_anions.add(ne)
 
-    targets = sorted(e for e in coupled_anions if e not in existing_centers)
+    targets = sorted(coupled_anions)
     if not targets:
         return config
 
@@ -203,18 +213,32 @@ def augment_coupling_constraints(config: dict) -> dict:
     new_angle = list(angle_csts)
     injected  = False
 
+    # A measured cutoff (ADR-0004) when the config supplies one, as a
+    # number or per anion; otherwise the largest bond distance_max, which
+    # sits only just past the real bond and leaves the soft count
+    # unsaturated.
+    auto_cutoff = config.get("auto_coupling_cutoff")
+
     for anion in targets:
-        cutoff = _max_bond_distance_for(anion, bond_csts, present, ionic_q)
+        if isinstance(auto_cutoff, dict):
+            cutoff = auto_cutoff.get(anion)
+        else:
+            cutoff = auto_cutoff
+        if cutoff is None:
+            cutoff = _max_bond_distance_for(anion, bond_csts, present, ionic_q)
         if cutoff is None:
             continue  # nothing to derive a sensible cutoff from -- skip
-        injected = True
-        new_coord.append({
-            "center_atom": anion, "neighbor_atom": "X",
-            "cn_min": cn_lo, "cn_max": cn_hi,
-            "cutoff_distance": cutoff, "weight": weight,
-            "label": f"{anion}(X) [auto]",
-        })
-        if add_angle:
+        pair = _pair(anion, "X")
+        if pair not in existing_coord:
+            injected = True
+            new_coord.append({
+                "center_atom": anion, "neighbor_atom": "X",
+                "cn_min": cn_lo, "cn_max": cn_hi,
+                "cutoff_distance": cutoff, "weight": weight,
+                "label": f"{anion}(X) [auto]",
+            })
+        if add_angle and pair not in existing_angle:
+            injected = True
             angle_entry = {
                 "atom_center": anion, "atom_neighbor": "X",
                 "angle_min": a_lo, "angle_max": a_hi,

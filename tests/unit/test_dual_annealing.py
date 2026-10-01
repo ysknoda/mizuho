@@ -96,23 +96,29 @@ def test_seeded_x0_restart_can_become_the_global_best():
     assert np.allclose(best_x, target, atol=1e-3)
 
 
-def test_seeded_x0_ignored_when_fewer_than_three_restarts():
+def test_seeded_x0_ignored_when_fewer_than_three_restarts(monkeypatch):
     """seeded_x0 is restart index 2 specifically -- with n_restarts=2 it
-    never gets a slot. With config=None, BOTH restart 0 and restart 1
-    fall back to the box centre, which coincides with the decoy minimum
-    -- so if seeded_x0 were (incorrectly) still used, the result would
-    be the TRUE minimum (0); if correctly ignored, both restarts
-    converge only to the decoy (0.3)."""
+    never gets a slot. Checked on the starting points handed to each
+    restart rather than on where a stochastic global search happens to
+    finish: whether dual annealing escapes a decoy basin in 5 iterations
+    depends on its random stream, not on this rule."""
+    import mizuho.optimize.dual_annealing as da
+    captured = []
+
+    def capture(fn, tasks, max_workers=None, on_result=None):
+        captured.extend(tasks)
+        return [(t[7], 1.0) for t in tasks]
+
+    monkeypatch.setattr(da, "run_parallel_tasks", capture)
     bounds = [(0.0, 10.0), (0.0, 10.0)]
     target = np.array([9.9, 9.9])
-    decoy = np.array([5.0, 5.0])
-    objective = _two_basin_objective(target, decoy)
-
-    _, best_f = multistart_dual_annealing(
-        objective=objective, bounds=bounds, n_restarts=2,
+    multistart_dual_annealing(
+        objective=lambda x: 0.0, bounds=bounds, n_restarts=2,
         maxiter=5, seed=0, config=None, seeded_x0=target)
 
-    assert best_f == pytest.approx(0.3, abs=1e-6)
+    x0s = [t[7] for t in captured]
+    assert len(x0s) == 2
+    assert not any(np.allclose(x0, target) for x0 in x0s)
 
 
 def test_plateau_kwargs_accepted_and_ignored():

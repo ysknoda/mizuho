@@ -34,6 +34,7 @@ import numpy as np
 from scipy.optimize import dual_annealing
 
 from .._parallel_utils import run_parallel_tasks
+from .cma import restart_seed
 from .init_guess import (
     _apply_lattice_gradient_hint, _estimate_lattice_x0, _smart_init_x0,
 )
@@ -159,7 +160,7 @@ def multistart_dual_annealing(
         if verbose:
             print(f"      [DA restart {restart+1}/{n_restarts}] {tag}")
 
-        run_seed = None if seed is None else int(seed) + restart
+        run_seed = restart_seed(seed, restart)
         tasks.append((objective, bounds, maxiter, initial_temp, visit, accept,
                       minimizer_kwargs, x0, run_seed))
 

@@ -14,6 +14,7 @@ from ..lattice import (
 )
 from ..structure import build_structure
 from .penalties import (
+    _integrality_applies, _integrality_penalty, reject_removed_keys,
     _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
@@ -57,6 +58,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
             cn_max: 4
             weight: 10.0
     """
+    reject_removed_keys(config)
     try:
         struct = build_structure(param_vector, config)
     except Exception:
@@ -135,14 +137,11 @@ def compute_error(param_vector: np.ndarray, config: dict,
     for s in all_sp:
         sp_idx[s] = np.where(sp_arr == s)[0]
     charges = config.get("ionic_charges", {})
-    # When set, every _penalty() call below divides its raw physical-unit
-    # deviation by a term-specific natural scale before squaring, so bond
-    # (A), angle (deg), CN (dimensionless count) etc. become comparable
-    # relative deviations instead of raw units whose squares differ by
-    # orders of magnitude (see the mizuho-py-wychoff-position plan's
-    # phase I-1 for the empirical CN-domination data this addresses).
-    # Default False reproduces the exact pre-existing raw-unit behaviour.
-    normalize_penalties = config.get("normalize_penalties", False)
+    # Every _penalty() call below divides its raw physical-unit deviation
+    # by a term-specific natural scale before squaring, so bond (A), angle
+    # (deg), CN (dimensionless count) etc. become comparable relative
+    # deviations instead of raw units whose squares differ by orders of
+    # magnitude. Always on: docs/adr/0009-always-normalise-penalties.md.
 
     # ------------------------------------------------------------------
     # 2. Bond distance  (pairs within cutoff only)
@@ -173,7 +172,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         e1          = bc["atom1"]
         dmin, dmax  = bc["distance_min"], bc["distance_max"]
         w           = bc.get("weight", 1.0)
-        scale       = _midpoint_scale(dmin, dmax) if normalize_penalties else 1.0
+        scale       = _midpoint_scale(dmin, dmax)
         # cutoff resolution: key omitted -> auto default (1.5 x distance_max);
         # key present and explicitly null -> no cutoff (all pairs, legacy).
         if "cutoff" in bc:
@@ -234,7 +233,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         center_e = ac["atom_center"]
         amin, amax = ac["angle_min"], ac["angle_max"]
         w          = ac.get("weight", 1.0)
-        scale      = _midpoint_scale(amin, amax) if normalize_penalties else 1.0
+        scale      = _midpoint_scale(amin, amax)
         trans_tol  = ac.get("ignore_trans_above", 150.0)
         # Order-independent species pairs to drop from the angle-triple
         # enumeration below (e.g. [["H","H"]] to skip H-center-H angles
@@ -351,7 +350,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         cnmin, cnmax = cc["cn_min"], cc["cn_max"]
         cutoff   = cc["cutoff_distance"]
         w        = cc.get("weight", 1.0)
-        scale    = _midpoint_scale(cnmin, cnmax) if normalize_penalties else 1.0
+        scale    = _midpoint_scale(cnmin, cnmax)
         width    = cc.get("smoothing_width", 0.10)
 
         ci_arr = sp_idx.get(ce, np.array([], dtype=int))
@@ -383,10 +382,15 @@ def compute_error(param_vector: np.ndarray, config: dict,
         dm = img_all[np.ix_(ci_arr, ni_arr)].copy()       # (Nc, Nn, 27)
         dm[ci_arr[:, None] == ni_arr[None, :], ZERO_SHIFT_INDEX] = np.inf
 
+        # ADR-0007: a cation's soft count must also sit near an integer,
+        # or two neighbours parked at the cutoff (0.5 each) pass for one.
+        integral = _integrality_applies(ce, charges)
         raw_cn = 0.0
         for li in range(len(ci_arr)):
             cn_i = _soft_coordination_number(dm[li].ravel(), cutoff, width)
             p    = _penalty(cn_i, cnmin, cnmax, w, scale=scale)
+            if integral:
+                p += _integrality_penalty(cn_i, w, scale)
             raw_cn += p
             if verbose and p > 0:
                 neigh_lbl = cc["neighbor_atom"]
@@ -408,7 +412,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         w       = rc.get("weight", 1.0)
         # One-sided (no dmax): the natural scale is dmin itself, not a
         # band midpoint (there is no upper bound to average with).
-        scale   = max(dmin, _SCALE_EPS) if normalize_penalties else 1.0
+        scale   = max(dmin, _SCALE_EPS)
         label   = rc.get("label", f"{e1}-{rc['atom2']} repulsion")
 
         idx1 = sp_idx.get(e1, np.array([], dtype=int))
@@ -457,8 +461,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         # _penalty's band-midpoint scale doesn't apply -- use the cell's
         # total absolute ionic charge as the natural "how big a charge
         # imbalance is this cell's own chemistry" reference instead.
-        charge_scale = (max(sum(abs(charges.get(s, 0)) for s in species), _SCALE_EPS)
-                        if normalize_penalties else 1.0)
+        charge_scale = (max(sum(abs(charges.get(s, 0)) for s in species), _SCALE_EPS))
         err = cw * (tc / charge_scale) ** 2
         total += err
         if verbose and err > 0.001:
@@ -498,7 +501,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
             V_lo  = vc.get("volume_min", V_est * _VOL_MARGIN_LO)
             V_hi  = vc.get("volume_max", V_est * _VOL_MARGIN_HI)
 
-        vol_scale = _midpoint_scale(V_lo, V_hi) if normalize_penalties else 1.0
+        vol_scale = _midpoint_scale(V_lo, V_hi)
         vol_err = _penalty(V_cell, V_lo, V_hi, vw, scale=vol_scale)
         total  += vol_err
         if verbose and vol_err > 0:
@@ -527,8 +530,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
     #   ratio is always >= 1.0 by construction, so this is effectively
     #   one-sided -- the [1.0, ratio_max] band form is kept (rather than
     #   an ad hoc one-sided formula) so it reuses _midpoint_scale exactly
-    #   like every other term, with no special-casing for
-    #   normalize_penalties. Trivially always-satisfied (ratio==1.0
+    #   like every other term. Trivially always-satisfied (ratio==1.0
     #   exactly) for cubic systems, where a==b==c by construction -- no
     #   crystal-system dispatch needed. Unlike volume_constraint, there
     #   is no composition-derived auto-estimate for a "reasonable" ratio
@@ -542,7 +544,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         ratio_max = arc.get("ratio_max", 3.0)
         axis_lengths = np.linalg.norm(lat, axis=1)
         ratio = float(axis_lengths.max() / max(axis_lengths.min(), _SCALE_EPS))
-        ar_scale = _midpoint_scale(1.0, ratio_max) if normalize_penalties else 1.0
+        ar_scale = _midpoint_scale(1.0, ratio_max)
         ar_err = _penalty(ratio, 1.0, ratio_max, arw, scale=ar_scale)
         total += ar_err
         if verbose and ar_err > 0:
@@ -615,7 +617,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         cb = float(np.dot(a_vec, c_vec) / max(a_len * c_len, _SCALE_EPS))
         cg = float(np.dot(a_vec, b_vec) / max(a_len * b_len, _SCALE_EPS))
         G = 1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg
-        cv_scale = _midpoint_scale(g_min, 1.0) if normalize_penalties else 1.0
+        cv_scale = _midpoint_scale(g_min, 1.0)
         cv_err = _penalty(G, g_min, 1.0, cvw, scale=cv_scale)
         total += cv_err
         if verbose and cv_err > 0:

@@ -16,13 +16,14 @@ def test_cli_help():
         [sys.executable, "-m", "mizuho", "--help"],
         capture_output=True, text=True, timeout=30)
     assert result.returncode == 0
-    assert "input" in result.stdout.lower()
+    for command in ("run", "check", "fit", "candidates", "wyckoff", "suggest"):
+        assert command in result.stdout
 
 
 def test_cli_nacl_end_to_end(tmp_path):
     out_path = tmp_path / "nacl.vasp"
     result = subprocess.run(
-        [sys.executable, "-m", "mizuho",
+        [sys.executable, "-m", "mizuho", "run",
          str(FIXTURES_DIR / "nacl.yaml"),
          "--output", str(out_path), "--seed", "42"],
         capture_output=True, text=True, timeout=120)
@@ -45,7 +46,7 @@ def test_cli_mode_single_spacegroup_explicit_matches_implicit(tmp_path):
 
     out_path = tmp_path / "nacl.vasp"
     result = subprocess.run(
-        [sys.executable, "-m", "mizuho", str(config_path),
+        [sys.executable, "-m", "mizuho", "run", str(config_path),
          "--output", str(out_path), "--seed", "42"],
         capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr
@@ -63,14 +64,14 @@ def test_cli_workers_flag_matches_sequential_result(tmp_path):
     par_out = tmp_path / "nacl_par.vasp"
 
     seq = subprocess.run(
-        [sys.executable, "-m", "mizuho", str(FIXTURES_DIR / "nacl.yaml"),
+        [sys.executable, "-m", "mizuho", "run", str(FIXTURES_DIR / "nacl.yaml"),
          "--output", str(seq_out), "--seed", "42"],
         capture_output=True, text=True, timeout=120)
     assert seq.returncode == 0, seq.stderr
     assert "in parallel" not in seq.stdout
 
     par = subprocess.run(
-        [sys.executable, "-m", "mizuho", str(FIXTURES_DIR / "nacl.yaml"),
+        [sys.executable, "-m", "mizuho", "run", str(FIXTURES_DIR / "nacl.yaml"),
          "--output", str(par_out), "--seed", "42", "--workers", "2"],
         capture_output=True, text=True, timeout=120)
     assert par.returncode == 0, par.stderr
@@ -91,7 +92,101 @@ def test_cli_mode_conflicting_with_spacegroup_is_rejected(tmp_path):
         yaml.safe_dump(config, fh)
 
     result = subprocess.run(
-        [sys.executable, "-m", "mizuho", str(config_path)],
+        [sys.executable, "-m", "mizuho", "run", str(config_path)],
         capture_output=True, text=True, timeout=30)
     assert result.returncode != 0
     assert "auto_spacegroup" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Subcommands (docs/adr/0013-cli-subcommands.md)
+# ---------------------------------------------------------------------------
+
+REFERENCE_DIR = FIXTURES_DIR / "reference"
+
+
+def _mizuho(*args, timeout=120):
+    return subprocess.run([sys.executable, "-m", "mizuho", *map(str, args)],
+                          capture_output=True, text=True, timeout=timeout)
+
+
+def test_bare_yaml_argument_is_not_an_implicit_run():
+    """No compatibility special case: `mizuho input.yaml` stops working."""
+    result = _mizuho(FIXTURES_DIR / "nacl.yaml", timeout=30)
+    assert result.returncode != 0
+    assert "invalid choice" in result.stderr
+
+
+def test_run_writes_cif_that_reads_back(tmp_path):
+    from mizuho.io.cif import cif_to_mizuho
+    out = tmp_path / "nacl.cif"
+    result = _mizuho("run", FIXTURES_DIR / "nacl.yaml", "--format", "cif",
+                     "--output", out, "--seed", "42")
+    assert result.returncode == 0, result.stderr
+    m = cif_to_mizuho(out)
+    assert m.spacegroup == 225
+    assert sorted(m.label().split()) == ["Cl@b", "Na@a"]
+    # The run report states the detected symmetry ladder.
+    assert "Detected space group by tolerance" in result.stdout
+
+
+def test_check_reports_objective_breakdown_and_symmetry():
+    result = _mizuho("check", FIXTURES_DIR / "wurtzite_zno.yaml",
+                     REFERENCE_DIR / "wurtzite.cif", timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "Zn@b O@b" in out
+    assert "Objective   : 0.0000" in out
+    assert "integer [4]" in out
+    assert "186 (P6_3mc)" in out
+
+
+def test_check_rejects_removed_config_key(tmp_path):
+    config = yaml.safe_load(open(FIXTURES_DIR / "nacl.yaml"))
+    config["normalize_penalties"] = False
+    path = tmp_path / "old.yaml"
+    path.write_text(yaml.safe_dump(config))
+    result = _mizuho("run", path, timeout=30)
+    assert result.returncode != 0
+    assert "0009" in result.stdout
+
+
+def test_fit_compares_with_the_reference(tmp_path):
+    out = tmp_path / "fit.cif"
+    result = _mizuho("fit", FIXTURES_DIR / "wurtzite_zno.yaml",
+                     REFERENCE_DIR / "wurtzite.cif", "--seed", "1", "--output", out,
+                     timeout=300)
+    assert result.returncode == 0, result.stderr
+    assert "Objective at reference" in result.stdout
+    assert "lattice within 3% of reference" in result.stdout
+    assert out.exists()
+
+
+def test_candidates_lists_merged_classes_with_strata():
+    result = _mizuho("candidates", FIXTURES_DIR / "rutile_tio2.yaml", "--seeds", "2",
+                     timeout=120)
+    assert result.returncode == 0, result.stderr
+    assert "equivalence classes" in result.stdout
+    assert "free-parameter strata" in result.stdout
+    assert "spread" in result.stdout
+
+
+def test_candidates_find_accepts_any_representative():
+    a = _mizuho("candidates", FIXTURES_DIR / "rutile_tio2.yaml", "--find", "Ti@a O@f")
+    b = _mizuho("candidates", FIXTURES_DIR / "rutile_tio2.yaml", "--find", "Ti@b O@g")
+    assert a.returncode == 0 and b.returncode == 0, a.stderr + b.stderr
+    assert a.stdout.splitlines()[-1] == b.stdout.splitlines()[-1]
+
+
+def test_wyckoff_lists_positions_and_equivalences():
+    result = _mizuho("wyckoff", "227", timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert "setting choice '1'" in result.stdout
+    line_a = next(l for l in result.stdout.splitlines() if l.split()[:1] == ["a"])
+    assert line_a.split()[-1] == "b"
+
+
+def test_suggest_is_reserved():
+    result = _mizuho("suggest", REFERENCE_DIR / "wurtzite.cif", timeout=30)
+    assert result.returncode == 2
+    assert "reserved" in result.stdout

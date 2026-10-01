@@ -113,12 +113,54 @@ def test_coupling_user_supplied_anion_constraint_suppresses_injection():
         "cn_min": 3, "cn_max": 3, "cutoff_distance": 2.2,
     })
     new_cfg = augment_coupling_constraints(cfg)
-    # O already has its own constraint -- must not get a second,
-    # auto-injected one.
-    assert new_cfg is cfg
-    o_constraints = [c for c in cfg["coordination_constraints"]
+    # O(Ti) is O(X) in TiO2: no second coordination constraint...
+    o_constraints = [c for c in new_cfg["coordination_constraints"]
                      if c["center_atom"] == "O"]
     assert len(o_constraints) == 1
+    # ...but the angle type has no O(X) pair yet, so its auto constraint
+    # is still injected (phase B: keyed per (centre, neighbours) pair and
+    # per constraint type, not per centre).
+    assert any(a["atom_center"] == "O" for a in new_cfg["angle_constraints"])
+
+
+def test_coupling_polymerisation_constraint_does_not_suppress_o_x():
+    """O(Si) in a silicate constrains a different neighbour set than O(X)."""
+    cfg = {
+        "composition": "Mg2SiO4", "spacegroup": 62,
+        "ionic_charges": {"Mg": 2, "Si": 4, "O": -2},
+        "bond_constraints": [
+            {"atom1": "Si", "atom2": "O", "distance_min": 1.58, "distance_max": 1.69}],
+        "coordination_constraints": [
+            {"center_atom": "Si", "neighbor_atom": "O", "cn_min": 4, "cn_max": 4,
+             "cutoff_distance": 2.397},
+            {"center_atom": "O", "neighbor_atom": "Si", "cn_min": 1, "cn_max": 1,
+             "cutoff_distance": 2.397}],
+    }
+    new_cfg = augment_coupling_constraints(cfg)
+    assert any(c["center_atom"] == "O" and c["neighbor_atom"] == "X"
+               for c in new_cfg["coordination_constraints"])
+
+
+def test_coupling_cutoff_key_overrides_bond_derived_cutoff():
+    cfg = _rutile_like_config()
+    cfg["auto_coupling_cutoff"] = 2.73
+    o_cst = next(c for c in augment_coupling_constraints(cfg)["coordination_constraints"]
+                 if c["center_atom"] == "O")
+    assert o_cst["cutoff_distance"] == 2.73
+    cfg["auto_coupling_cutoff"] = {"O": 2.61}
+    o_ang = next(a for a in augment_coupling_constraints(cfg)["angle_constraints"]
+                 if a["atom_center"] == "O")
+    assert o_ang["angle_cutoff"] == 2.61
+
+
+def test_coupling_fully_stated_anion_is_left_alone():
+    cfg = _rutile_like_config()
+    cfg["coordination_constraints"].append(
+        {"center_atom": "O", "neighbor_atom": "X", "cn_min": 3, "cn_max": 3,
+         "cutoff_distance": 2.73})
+    cfg["angle_constraints"] = [
+        {"atom_center": "O", "atom_neighbor": "Ti", "angle_min": 90, "angle_max": 140}]
+    assert augment_coupling_constraints(cfg) is cfg
 
 
 def test_coupling_angle_constraint_can_be_disabled_independently():

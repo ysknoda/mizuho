@@ -14,6 +14,7 @@ from ..lattice import (
 from ..structure import build_structure
 from .energy import compute_error
 from .penalties import (
+    _integrality_applies, _integrality_penalty, reject_removed_keys,
     _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
@@ -58,6 +59,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         { "label": str,
           "center_atom": str, "neighbor_atom": str,
           "cn_per_atom": [int,...],  # individual CN for every centre atom
+          "cn_soft_per_atom": [float,...],  # the logistic count the penalty uses
           "cn_min_observed": float,
           "cn_max_observed": float,
           "cn_min_target": int,
@@ -68,6 +70,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
       "hybrid":  float,          # E_hybrid (0 if not used)
     }
     """
+    reject_removed_keys(config)
     try:
         struct = build_structure(param_vector, config)
     except Exception:
@@ -95,7 +98,6 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
     # Must mirror energy.py's compute_error exactly (see phase C-2's
     # "breakdown.py stays consistent with energy.py" principle) so this
     # diagnostic's numbers never diverge from what was actually optimised.
-    normalize_penalties = config.get("normalize_penalties", False)
 
     # 1. Overlap -- every image of every distinct pair, plus each atom
     #    against its own images (ADR-0001). Mirrors energy.py exactly.
@@ -129,7 +131,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         e1       = bc["atom1"]
         dmin_t, dmax_t = bc["distance_min"], bc["distance_max"]
         w        = bc.get("weight", 1.0)
-        scale    = _midpoint_scale(dmin_t, dmax_t) if normalize_penalties else 1.0
+        scale    = _midpoint_scale(dmin_t, dmax_t)
         # Same cutoff resolution as compute_error (key omitted -> auto
         # default; key explicitly null -> no cutoff, all pairs).
         if "cutoff" in bc:
@@ -197,7 +199,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         center_e  = ac["atom_center"]
         amin, amax = ac["angle_min"], ac["angle_max"]
         w          = ac.get("weight", 1.0)
-        scale      = _midpoint_scale(amin, amax) if normalize_penalties else 1.0
+        scale      = _midpoint_scale(amin, amax)
         trans_tol  = ac.get("ignore_trans_above", 150.0)
         neigh_spec = ac["atom_neighbor"]
         label      = ac.get("label", f"{neigh_spec}-{center_e}-{neigh_spec}")
@@ -290,7 +292,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         cnmin, cnmax = cc["cn_min"], cc["cn_max"]
         cutoff       = cc["cutoff_distance"]
         w            = cc.get("weight", 1.0)
-        scale        = _midpoint_scale(cnmin, cnmax) if normalize_penalties else 1.0
+        scale        = _midpoint_scale(cnmin, cnmax)
         label        = cc.get("label", f"{ce}({neigh_spec})")
 
         ci_arr = sp_idx.get(ce, np.array([], dtype=int))
@@ -304,7 +306,8 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         if len(ci_arr) == 0 or len(ni_arr) == 0:
             result["cn"].append({
                 "label": label, "center_atom": ce, "neighbor_atom": neigh_spec,
-                "cn_per_atom": [], "cn_min_observed": float("nan"),
+                "cn_per_atom": [], "cn_soft_per_atom": [],
+                "cn_min_observed": float("nan"),
                 "cn_max_observed": float("nan"),
                 "cn_min_target": cnmin, "cn_max_target": cnmax,
                 "penalty": 0.0})
@@ -316,7 +319,10 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         dm      = img_all[np.ix_(ci_arr, ni_arr)].copy()   # (Nc, Nn, 27)
         dm[ci_arr[:, None] == ni_arr[None, :], ZERO_SHIFT_INDEX] = np.inf
         cn_list = []   # hard integer count -- for human-readable display only
+        soft_list = []
         cn_err  = 0.0
+        int_err = 0.0
+        integral = _integrality_applies(ce, charges)
         for li in range(len(ci_arr)):
             row = dm[li].ravel()
             finite  = np.isfinite(row)
@@ -328,7 +334,10 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             # a different (hard-threshold) value for display.
             cn_soft = _soft_coordination_number(row, cutoff, width)
             cn_list.append(cn_hard)
+            soft_list.append(float(cn_soft))
             cn_err += _penalty(cn_soft, cnmin, cnmax, w, scale=scale)
+            if integral:
+                int_err += _integrality_penalty(cn_soft, w, scale)
 
         norm_n = max(len(ci_arr), 1)
         result["cn"].append({
@@ -336,12 +345,18 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             "center_atom":      ce,
             "neighbor_atom":    neigh_spec,
             "cn_per_atom":      cn_list,
+            "cn_soft_per_atom": soft_list,
             "cn_min_observed":  float(min(cn_list)),
             "cn_max_observed":  float(max(cn_list)),
             "cn_min_target":    cnmin,
             "cn_max_target":    cnmax,
             "n_norm":           norm_n,
-            "penalty":          float(cn_err) / norm_n,
+            # Integrality (ADR-0007) is part of this constraint's penalty;
+            # its share is reported separately for diagnosis.
+            "integrality_penalty": float(int_err) / norm_n,
+            "integrality_max_dev": (max(abs(x - round(x)) for x in soft_list)
+                                    if integral else None),
+            "penalty":          float(cn_err + int_err) / norm_n,
         })
 
     # 5. Repulsion constraints (one-sided, lower-bound only)
@@ -350,7 +365,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         e1   = rc["atom1"]
         dmin = rc["distance_min"]
         w    = rc.get("weight", 1.0)
-        scale = max(dmin, _SCALE_EPS) if normalize_penalties else 1.0
+        scale = max(dmin, _SCALE_EPS)
 
         idx1 = sp_idx.get(e1, np.array([], dtype=int))
 
@@ -403,8 +418,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
     charges   = config.get("ionic_charges", {})
     cw        = config.get("charge_balance_weight", 5.0)
     tc        = float(sum(charges.get(s, 0) for s in species)) if charges else 0.0
-    charge_scale = (max(sum(abs(charges.get(s, 0)) for s in species), _SCALE_EPS)
-                    if (normalize_penalties and charges) else 1.0)
+    charge_scale = (max(sum(abs(charges.get(s, 0)) for s in species), _SCALE_EPS))
     chg_err   = float(cw * (tc / charge_scale) ** 2)
     result["charge"] = chg_err
 
@@ -420,7 +434,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             V_est = _estimate_volume(species)
             V_lo  = vc.get("volume_min", V_est * _VOL_MARGIN_LO)
             V_hi  = vc.get("volume_max", V_est * _VOL_MARGIN_HI)
-        vol_scale = _midpoint_scale(V_lo, V_hi) if normalize_penalties else 1.0
+        vol_scale = _midpoint_scale(V_lo, V_hi)
         vol_err = float(_penalty(V_cell, V_lo, V_hi, vw, scale=vol_scale))
         result["volume"] = {
             "V_cell":   V_cell,
@@ -440,7 +454,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         ratio_max    = arc.get("ratio_max", 3.0)
         axis_lengths = np.linalg.norm(lat, axis=1)
         ratio = float(axis_lengths.max() / max(axis_lengths.min(), _SCALE_EPS))
-        ar_scale = _midpoint_scale(1.0, ratio_max) if normalize_penalties else 1.0
+        ar_scale = _midpoint_scale(1.0, ratio_max)
         ar_err = float(_penalty(ratio, 1.0, ratio_max, arw, scale=ar_scale))
         result["aspect_ratio"] = {
             "ratio":     ratio,
@@ -465,7 +479,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         cb = float(np.dot(a_vec, c_vec) / max(a_len * c_len, _SCALE_EPS))
         cg = float(np.dot(a_vec, b_vec) / max(a_len * b_len, _SCALE_EPS))
         G = 1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg
-        cv_scale = _midpoint_scale(g_min, 1.0) if normalize_penalties else 1.0
+        cv_scale = _midpoint_scale(g_min, 1.0)
         cv_err = float(_penalty(G, g_min, 1.0, cvw, scale=cv_scale))
         result["cell_validity"] = {
             "G":       G,
@@ -604,6 +618,9 @@ def print_error_breakdown(bd: dict) -> None:
                       f"obs=[{c['cn_min_observed']:.0f}..{c['cn_max_observed']:.0f}]  "
                       f"target=[{c['cn_min_target']},{c['cn_max_target']}]  "
                       f"/N={c.get('n_norm',1)}")
+            if c.get("integrality_penalty", 0.0) > 0.0:
+                detail += (f"  integrality {c['integrality_penalty']:.4f} "
+                           f"(dev {c['integrality_max_dev']:.3f})")
         _row("Coord. number", c["label"], c["penalty"], detail=detail)
 
     # 5. Repulsion

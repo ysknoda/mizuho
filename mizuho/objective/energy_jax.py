@@ -44,7 +44,10 @@ from ..data._orbit import _frac_delta
 from ..lattice import _IMAGE_SHIFTS, ZERO_SHIFT_INDEX, get_lattice_system
 from ..structure import build_structure
 from .energy import compute_error
-from .penalties import _expand_wildcard, _midpoint_scale
+from .penalties import (
+    INTEGRALITY_CEILING, _expand_wildcard, _integrality_applies, _midpoint_scale,
+    reject_removed_keys,
+)
 
 try:
     import jax
@@ -264,6 +267,7 @@ def make_gradient_fn(config, reference_param_vector):
     compute_error/build_structure themselves expect -- the same `cfg`
     optimize_one_assignment builds.
     """
+    reject_removed_keys(config)
     if not JAX_AVAILABLE:
         raise ImportError(
             "energy_jax.make_gradient_fn requires the optional 'jax' "
@@ -277,7 +281,6 @@ def make_gradient_fn(config, reference_param_vector):
     sites = config["wyckoff_sites"]
     rotations, translations = get_ops(config["spacegroup"])
     charges = config.get("ionic_charges", {})
-    normalize_penalties = config.get("normalize_penalties", False)
 
     # ---- One-time (per make_gradient_fn call) setup in plain NumPy: ----
     ref = np.asarray(reference_param_vector, dtype=float)
@@ -324,7 +327,7 @@ def make_gradient_fn(config, reference_param_vector):
             cutoff = cc["cutoff_distance"]
             w = cc.get("weight", 1.0)
             width = cc.get("smoothing_width", 0.10)
-            scale = _midpoint_scale(cnmin, cnmax) if normalize_penalties else 1.0
+            scale = _midpoint_scale(cnmin, cnmax)
 
             ci_arr = sp_idx.get(ce, np.array([], dtype=int))
             if len(ci_arr) == 0:
@@ -358,6 +361,7 @@ def make_gradient_fn(config, reference_param_vector):
             # jit-compatible.
             identity = np.zeros((len(ci_arr), len(ni_arr), 27), dtype=bool)
             identity[ci_arr[:, None] == ni_arr[None, :], ZERO_SHIFT_INDEX] = True
+            integral = _integrality_applies(ce, charges)
             raw_cn = jnp.asarray(0.0)
             for li in range(len(ci_arr)):
                 row = dm[li]
@@ -365,6 +369,12 @@ def make_gradient_fn(config, reference_param_vector):
                 weights = jnp.where(jnp.asarray(identity[li]), 0.0, weights)
                 cn_i = jnp.sum(weights)
                 raw_cn = raw_cn + _penalty_jax(cn_i, cnmin, cnmax, w, scale)
+                if integral:
+                    # Mirrors penalties._integrality_penalty (ADR-0007).
+                    # round() is piecewise constant, so d/dcn |cn - round(cn)|
+                    # is +-1 away from half-integers, as in the numpy term.
+                    dev = jnp.abs(cn_i - jnp.round(cn_i))
+                    raw_cn = raw_cn + _penalty_jax(dev, 0.0, INTEGRALITY_CEILING, w, scale)
             # Same per-centre-atom normalisation as energy.py's CN
             # section (raw_cn / max(len(ci_arr), 1)) -- MUST match, or
             # this term's gradient is wrong by a factor of len(ci_arr)
@@ -387,7 +397,7 @@ def make_gradient_fn(config, reference_param_vector):
                 V_est = _estimate_volume(all_species)
                 V_lo = vc.get("volume_min", V_est * _VOL_MARGIN_LO)
                 V_hi = vc.get("volume_max", V_est * _VOL_MARGIN_HI)
-            vscale = _midpoint_scale(V_lo, V_hi) if normalize_penalties else 1.0
+            vscale = _midpoint_scale(V_lo, V_hi)
             total = total + _penalty_jax(V_cell, V_lo, V_hi, vw, vscale)
 
         return total

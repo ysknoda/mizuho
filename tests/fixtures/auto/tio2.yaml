@@ -1,0 +1,13 @@
+# TiO2, automatic space-group search. Expected detected group 136 (rutile)
+# or its polytype 141 (anatase).
+composition: TiO2
+ionic_charges: {Ti: 4, O: -2}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+bond_constraints:
+  - {atom1: Ti, atom2: O, distance_min: 1.90, distance_max: 2.03, cutoff: 2.73, weight: 1.0}
+coordination_constraints:
+  - {center_atom: Ti, neighbor_atom: O, cn_min: 6, cn_max: 6, cutoff_distance: 2.73, weight: 1.5}
+  - {center_atom: O, neighbor_atom: Ti, cn_min: 3, cn_max: 3, cutoff_distance: 2.73, weight: 1.0}
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}

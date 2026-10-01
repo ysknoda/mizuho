@@ -205,3 +205,35 @@ def test_restart_workers_parallel_matches_sequential():
 
     assert f_par == f_seq
     assert np.array_equal(x_par, x_seq)
+
+
+def test_seed_zero_is_reproducible():
+    """pycma treats seed 0 as 'seed from the clock'; mizuho must not."""
+    from mizuho.optimize.cma import _cma_es
+
+    def f(x):
+        return float(np.sum((x - 0.3) ** 2))
+
+    bounds = [(0.0, 1.0)] * 4
+    runs = [_cma_es(f, np.full(4, 0.5), bounds, maxiter=15, seed=0) for _ in range(2)]
+    np.testing.assert_array_equal(runs[0][0], runs[1][0])
+
+
+def test_consecutive_seeds_do_not_share_restart_streams(monkeypatch):
+    """Seed s restart 1 must not replay seed s+1 restart 0 (ADR-0012's
+    five-seed spread needs independent draws)."""
+    import mizuho.optimize.cma as cma_mod
+    seen = {}
+
+    def fake(objective, x0, bounds, sigma0, maxiter, tol, seed, verbose,
+             periodic_mask, plateau_patience, plateau_rel_tol):
+        seen.setdefault("seeds", []).append(seed)
+        return np.asarray(x0), 1.0
+
+    monkeypatch.setattr(cma_mod, "_cma_es", fake)
+    bounds = [(0.0, 1.0)] * 2
+    for s in (42, 43):
+        multistart_cma_es(lambda x: 0.0, bounds, n_restarts=3, maxiter=1, seed=s)
+    a, b = seen["seeds"][:3], seen["seeds"][3:]
+    assert not set(a) & set(b)
+    assert len(set(a)) == 3

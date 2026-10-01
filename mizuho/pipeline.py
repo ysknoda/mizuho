@@ -14,6 +14,7 @@ from .geometry import precompute_letter_feasibility, rank_by_feasibility_staged
 from .io.poscar import write_poscar
 from .io.report import print_summary
 from .lattice import CRYSTAL_SYSTEM_OF_SG
+from .normalizer import merge_equivalent
 from .optimize.cma import multistart_cma_es
 from .optimize.driver import optimize_one_assignment
 from .optimize.parallel import optimize_assignments_parallel
@@ -104,8 +105,8 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
     case, so this is a true no-op end to end.
 
     Returns (valid_asgns, n_found, shell_seeds) -- n_found is the count
-    BEFORE truncation (but after Phase 1's own search, which is run
-    exactly once here), for status reporting. shell_seeds is a list
+    Phase 1's search enumerated, BEFORE equivalent assignments are merged
+    and before truncation, for status reporting. shell_seeds is a list
     parallel to valid_asgns (same length, same order); each entry is
     the shell_seed_info geometry.rank_by_feasibility already computed
     for that assignment's coupled local shells (see that function's
@@ -117,16 +118,30 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
     has_shape_constraints = bool(sg_config.get("coordination_constraints")
                                   or sg_config.get("angle_constraints"))
 
+    # Phase 1's feasibility solves are small CMA-ES runs; unseeded, the
+    # ranking they produce does not reproduce (docs/adr/0012-phase-1-is-
+    # seeded-and-ranked-over-several-seeds.md).
+    seed = sg_config.get("optimization", {}).get("seed")
+
     letter_feasibility = None
     if has_shape_constraints:
         feasibility_workers = sg_config.get("tree_search", {}).get("feasibility_workers")
         letter_feasibility = precompute_letter_feasibility(
-            sg_config, multistart_cma_es, max_workers=feasibility_workers)
+            sg_config, multistart_cma_es, seed=seed, max_workers=feasibility_workers)
 
     valid_asgns = wyckoff_tree_search(sg_config, letter_feasibility=letter_feasibility)
     n_found = len(valid_asgns)
     if not valid_asgns:
         return valid_asgns, n_found, []
+
+    # Assignments related by the space group's Euclidean normalizer are
+    # one crystal; merged here, after enumeration and before the costly
+    # ranking (docs/adr/0011-equivalent-assignments-via-the-euclidean-
+    # normalizer.md).
+    valid_asgns = merge_equivalent(sg_config["spacegroup"], valid_asgns)
+    if verbose and len(valid_asgns) < n_found:
+        print(f"  Merged {n_found} assignment(s) into {len(valid_asgns)} "
+              f"equivalence class(es) under the Euclidean normalizer.")
 
     shell_seeds = [None] * len(valid_asgns)
     if has_shape_constraints and len(valid_asgns) > 1:
@@ -137,7 +152,7 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
                   f"feasibility (staged) ...")
         ranked = rank_by_feasibility_staged(
             valid_asgns, sg_config, multistart_cma_es,
-            stage1_shortlist=stage1_shortlist,
+            stage1_shortlist=stage1_shortlist, seed=seed,
             letter_feasibility=letter_feasibility)
         valid_asgns = [a for a, _, _ in ranked]
         shell_seeds = [seed_info for _, _, seed_info in ranked]
@@ -578,3 +593,45 @@ def _run_composition_pool(base_config: dict, pool: list, args) -> None:
         write_poscar(structure, win_cfg, out_path)
 
     print("\n  Done.\n")
+
+
+def promote_to_detected_supergroup(sg: int, best_p, structure: dict, sg_config: dict,
+                                   config: dict, opt_cfg: dict, symprec: float,
+                                   verbose: bool = False):
+    """Act on a higher detected symmetry (docs/adr/0010-success-is-the-
+    detected-symmetry.md): a structure optimised in `sg` whose detected
+    group at `symprec` is a supergroup G' is symmetrised into G', mapped
+    onto a G' Wyckoff assignment in mizuho's setting, and re-optimised
+    there, so the answer returned is a genuine G' optimum.
+
+    Returns (error, G', assignment, param_vector, structure, G'-config), or
+    None when the detected group is `sg` itself (nothing to promote) or the
+    structure cannot be expressed in G'.
+    """
+    from .objective.energy import compute_error
+    from .structure import resolve_fixed_assignment
+    from .symmetry import detect_spacegroup, to_mizuho
+
+    lat, frac, species = (structure["lattice_matrix"], structure["frac_coords"],
+                          structure["species"])
+    found = detect_spacegroup(lat, frac, species, symprec)
+    if found is None or found[0] == sg:
+        return None
+    g2 = found[0]
+    try:
+        m = to_mizuho(lat, frac, species, g2, symprec=symprec)
+    except ValueError:
+        return None
+    asgn = resolve_fixed_assignment(g2, m.specs)
+    cfg2 = build_sg_config(config, g2)
+    cfg2["wyckoff_sites"] = assignments_to_sites(asgn)
+    e_sym = compute_error(m.param_vector, cfg2)
+    p2, e2, st2 = optimize_one_assignment(asgn, cfg2, opt_cfg, verbose=False,
+                                          label=m.label())
+    if st2 is None or e_sym <= e2:
+        from .structure import build_structure
+        p2, e2, st2 = m.param_vector, e_sym, build_structure(m.param_vector, cfg2)
+    if verbose:
+        print(f"  SG {sg} structure detected as SG {g2} at {symprec:g} A: "
+              f"re-optimised as {m.label()}, error {e2:.6f}")
+    return e2, g2, asgn, p2, st2, cfg2

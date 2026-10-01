@@ -72,6 +72,10 @@ def _nacl_config():
     lambda: _center_with_neighbors_config(),
     lambda: _center_with_neighbors_config(volume_bounds=(7000.0, 7900.0)),
     lambda: _nacl_config(),
+    # Neighbours 0.05 A inside the cutoff: soft CN 3 x 0.622 = 1.87, 0.13
+    # from an integer, so the integrality term (ADR-0007) is active and its
+    # JAX gradient is checked against finite differences here.
+    lambda: _center_with_neighbors_config(d=1.95),
 ])
 def test_gradient_matches_full_finite_difference(cfg_factory):
     cfg, pv = cfg_factory()
@@ -119,19 +123,6 @@ def test_gradient_is_a_descent_direction():
     stepped = pv - 1e-4 * g / (np.linalg.norm(g) + 1e-12)
     err_after = compute_error(stepped, cfg)
     assert err_after < err_before
-
-
-def test_gradient_with_normalize_penalties():
-    cfg, pv = _center_with_neighbors_config(volume_bounds=(7000.0, 7900.0))
-    cfg_norm = dict(cfg, normalize_penalties=True)
-
-    grad_fn = make_gradient_fn(cfg_norm, pv)
-    g_hybrid = grad_fn(pv)
-    g_fd = approx_fprime(pv, lambda x: compute_error(x, cfg_norm))
-
-    assert np.all(np.isfinite(g_hybrid))
-    tol = 1e-4 * (np.abs(g_fd).max() + 1.0)
-    assert np.abs(g_hybrid - g_fd).max() < tol
 
 
 def test_no_coordination_or_volume_constraints_reduces_to_pure_finite_difference():

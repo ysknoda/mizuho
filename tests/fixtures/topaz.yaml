@@ -37,24 +37,27 @@ lattice_bounds:
 bond_constraints:
   - atom1: Al
     atom2: O
-    distance_min: 1.80
-    distance_max: 2.05
+    # Band: reference span 1.885-1.902 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.84
+    distance_max: 1.95
     # Measured at tests/fixtures/reference/topaz.cif (ADR-0004):
     # Al first shell ends 1.902 A, second starts 3.325 A.
     cutoff: 2.613
     weight: 1.0
   - atom1: Al
     atom2: F
+    # Band: reference span 1.790-1.801 A widened by 2% (ADR-0007; phase E).
     distance_min: 1.75
-    distance_max: 1.95
+    distance_max: 1.84
     # Measured at tests/fixtures/reference/topaz.cif (ADR-0004):
     # Al first shell ends 1.902 A, second starts 3.325 A.
     cutoff: 2.613
     weight: 1.0
   - atom1: Si
     atom2: O
-    distance_min: 1.55
-    distance_max: 1.75
+    # Band: reference span 1.636-1.642 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.60
+    distance_max: 1.68
     # Measured at tests/fixtures/reference/topaz.cif (ADR-0004):
     # Si first shell ends 1.642 A, second starts 3.229 A.
     cutoff: 2.436
@@ -104,6 +107,19 @@ coordination_constraints:
     # Measured at the reference structure (ADR-0004).
     cutoff_distance: 2.436
     weight: 1.5
+  # Polymerisation (phase C): isolated SiO4 tetrahedra, each of the 16 O
+  # bonds exactly one Si ({1: 16} measured).
+  - center_atom: O
+    neighbor_atom: Si
+    cn_min: 1
+    cn_max: 1
+    cutoff_distance: 2.436
+    weight: 1.0
+
+# Cutoffs for the auto X-O-X / X-F-X angle constraints, which phase B now
+# injects beside the explicit O(X) / F(X) coordination constraints: the
+# same measured anion cutoffs (ADR-0004).
+auto_coupling_cutoff: {O: 2.566, F: 2.445}
 
 # All fields auto-computed from composition via the Hazen-type additive
 # volume rule (V_est=407.5 A^3 here, band [326.0,590.9]). Note (see the

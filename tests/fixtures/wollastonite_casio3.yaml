@@ -62,20 +62,30 @@ lattice_bounds:
 bond_constraints:
   - atom1: Si
     atom2: O
-    distance_min: 1.55
+    # Band: reference span 1.578-1.664 A widened by 2% (ADR-0007; phase E).
+    distance_min: 1.54
     distance_max: 1.70
     weight: 1.0
   - atom1: Ca
     atom2: O
-    distance_min: 2.30
-    distance_max: 2.60
+    # The cited [2.30, 2.60] is contradicted by the reference (2.266-2.639
+    # A, ADR-0004's amendment); the band is that span widened by 2%
+    # (ADR-0007; phase E).
+    distance_min: 2.22
+    distance_max: 2.70
+    # Measured at tests/fixtures/reference/wollastonite.cif (phase A):
+    # first shell ends 2.639 A, second starts 3.251 A. The auto default
+    # (distance_max * 1.5 = 3.90) swept the second shell in.
+    cutoff: 2.945
     weight: 1.0
 
 angle_constraints:
   - atom_center: Si
     atom_neighbor: O
+    # Measured 102.7-122.4 deg at the reference, outside the cited
+    # [100, 120] (ADR-0004's amendment; phase A).
     angle_min: 100.0
-    angle_max: 120.0
+    angle_max: 125.0
     weight: 1.5
 
 coordination_constraints:
@@ -83,14 +93,24 @@ coordination_constraints:
     neighbor_atom: O
     cn_min: 4
     cn_max: 4
-    cutoff_distance: 1.85
+    # Measured at the reference (phase A): Si-O first shell ends 1.664 A,
+    # second starts 3.497 A.
+    cutoff_distance: 2.580
     weight: 1.5
   - center_atom: Ca
     neighbor_atom: O
     cn_min: 6
     cn_max: 7
-    cutoff_distance: 2.75
+    # Measured at the reference (phase A), as the Ca-O bond cutoff.
+    cutoff_distance: 2.945
     weight: 1.5
+  # Polymerisation (phase C): single-chain silicate, {1: 12, 2: 6} measured.
+  - center_atom: O
+    neighbor_atom: Si
+    cn_min: 1
+    cn_max: 2
+    cutoff_distance: 2.580
+    weight: 1.0
 
 # Auto-computed from composition (phase I-3, see the mizuho-py-wychoff-
 # position plan). volume_constraint's Hazen estimate here (V_est=68.76

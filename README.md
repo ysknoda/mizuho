@@ -44,8 +44,7 @@ pip install ".[numba]"
 # (measured slower on every current fixture -- see the section below)
 pip install ".[jax]"
 
-# The test suite, including spglib-based validation of the built-in
-# Wyckoff position database
+# The test suite
 pip install ".[test]"
 ```
 
@@ -78,9 +77,11 @@ from mizuho's own true symmetry-operation table
    the same space group and a single consistent letter).
 
 Every one of the 1,731 entries is cross-checked against this same spglib
-re-analysis in `tests/validation/test_wyckoff_db_vs_spglib.py`. `spglib`
-itself stays a test/dev-only dependency -- installed `mizuho` never needs
-it (or any other symmetry library) at runtime.
+re-analysis in `tests/validation/test_wyckoff_db_vs_spglib.py`. The database
+itself is shipped as generated tables; `spglib` is nevertheless a required
+runtime dependency, because detecting the symmetry of an optimised structure
+is part of how a search is judged
+([ADR-0010](docs/adr/0010-success-is-the-detected-symmetry.md)).
 
 ## Quick start
 
@@ -122,12 +123,32 @@ optimization:
 Then run:
 
 ```bash
-mizuho nacl.yaml --output nacl.vasp --seed 42
+mizuho run nacl.yaml --output nacl.vasp --seed 42
 ```
 
 This writes the best candidate structure to `nacl.vasp` (VASP POSCAR
-format) and prints a ranked summary of all candidates considered, along
-with a per-constraint error breakdown for the winner.
+format; `--format cif` writes a CIF in the structure's space group) and
+prints a ranked summary of all candidates considered, a per-constraint
+error breakdown for the winner, its detected space group at 1e-4 to 1e-1 A,
+and warnings for any lattice parameter sitting on a `lattice_bounds` edge
+or any coordination number whose soft count disagrees with the integer one.
+
+### Commands
+
+| command | purpose |
+| --- | --- |
+| `mizuho run cfg.yaml` | predict structures |
+| `mizuho check cfg.yaml ref.cif` | evaluate the objective at a reference structure: per-term breakdown, integer and soft coordination numbers, detected space group. No optimisation |
+| `mizuho fit cfg.yaml ref.cif` | fix the reference's Wyckoff assignment, optimise lattice and coordinates, and compare with the reference (lattice deviation, bound contacts, impostor warning). `--budget 4` is the global-minimum gate's budget |
+| `mizuho candidates cfg.yaml` | run Phase 1 only and list its ranking after merging equivalent assignments, with free-parameter strata; `--seeds 5` reports the rank spread, `--find 'Mg@a Al@d O@e'` locates one assignment |
+| `mizuho wyckoff SG` | list a space group's Wyckoff positions in mizuho's own setting, with the letters its Euclidean normalizer makes equivalent |
+| `mizuho suggest ref.cif` | reserved |
+
+`check` and `fit` read the CIF in any setting or origin choice and convert
+it to mizuho's (the first Hall setting of each space group), idealising the
+rounded special positions published CIFs contain. See
+[ADR-0013](docs/adr/0013-cli-subcommands.md); the former `mizuho cfg.yaml`
+form is gone.
 
 ## How it works
 
@@ -226,7 +247,9 @@ Whenever `ionic_charges` is set and some cation-centred `coordination_constraint
 
 ### Penalty normalisation
 
-Every penalty term is a squared deviation in its own raw physical unit (bond: Angstrom, angle: degrees, coordination number: a dimensionless count, ...), summed together with no scale reconciliation between them. In practice this lets the coordination-number term numerically dominate the total error (measured at 65-99% of the total across this project's own fixtures), regardless of the nominal per-constraint `weight`. Setting the top-level key `normalize_penalties: true` divides each term's deviation by a natural physical scale for that term (the target band's own midpoint for bond/angle/coordination-number/volume; the cell's total absolute ionic charge for the charge-balance term) before squaring, so all terms become comparable relative deviations. Default `false` reproduces every prior release's exact numeric behaviour; `hybridisation_constraints` and the overlap term are unaffected either way (overlap is already relative by construction; hybridisation is excluded because no fixture has ever exercised it with a nonzero value, see the mizuho-py-wychoff-position plan's phase I-1).
+Every penalty term divides its deviation by a natural physical scale for that term before squaring: the target band's own midpoint for bond, angle, coordination-number, volume, aspect-ratio and cell-validity terms; `distance_min` for repulsion; the cell's total absolute ionic charge for charge balance. All terms are therefore comparable relative deviations and each constraint's `weight` means what it says. Without this, the coordination-number term, a raw count, made up 65-99% of the total error across this project's own fixtures regardless of the nominal weights. The overlap term is already relative by construction; `hybridisation_constraints` stay in raw degrees.
+
+Normalisation is always on. The former `normalize_penalties` key was removed and a config that still sets it is rejected with an error ([ADR-0009](docs/adr/0009-always-normalise-penalties.md)): the gates had been scoring the raw objective while every search optimised the normalised one.
 
 ### JAX-accelerated Stage 2 gradient (measured: not recommended)
 
@@ -243,6 +266,20 @@ pytest
 
 The end-to-end tests that run a real search/optimisation pipeline are marked
 `slow`; `pytest -m "not slow"` skips them.
+
+The search gates of [ADR-0005](docs/adr/0005-five-gates-for-the-search.md)
+(rank over five seeds, global minimum at x4 budget, end-to-end proxy) and the
+automatic space-group known-answer tests take minutes to hours per mineral and
+run only on request:
+
+```bash
+pytest --run-gates tests/integration/test_search_gates.py
+pytest --run-gates tests/integration/test_auto_spacegroup_known_answers.py
+```
+
+`MIZUHO_GATE_RESULTS` names the directory the gates write their measurements
+to (default `gate-results/`); `scripts/record_impostor.py` turns a
+global-minimum result into an impostor fixture for the fast regression gate.
 
 ## License
 

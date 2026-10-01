@@ -1,0 +1,71 @@
+# Corundum Al2O3, space group 167 (R-3c), hexagonal axes, Z = 6.
+# Reference: tests/fixtures/reference/corundum_H.cif (COD 1000017,
+# a = 4.7606, c = 12.994 A). Rhombohedral lattice on hexagonal axes: the
+# first R-centred fixture.
+#
+# Cited coordination numbers: Al 6 (octahedral), O 4 (four Al) -- the
+# corundum structure type. Cutoffs, bond bands and angle bands measured at
+# the reference with scripts/measure_reference.py (ADR-0004, ADR-0007):
+# Al-O first shell 1.855-1.972 A, second shell from 3.222 A.
+#
+# Charge balance: 2*Al(+3) + 3*O(-2) = 0.
+composition: Al2O3
+spacegroup: 167
+spacegroup_symbol: R-3c
+
+ionic_charges:
+  Al: 3
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [4.2, 5.3]
+  c: [11.5, 14.5]
+
+bond_constraints:
+  - atom1: Al
+    atom2: O
+    # Span 1.855-1.972 A widened by 2% (ADR-0007).
+    distance_min: 1.81
+    distance_max: 2.02
+    cutoff: 2.597
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Al
+    atom_neighbor: O
+    # Measured 79.65-101.18 deg below the 150 deg trans threshold.
+    angle_min: 75.0
+    angle_max: 105.0
+    angle_cutoff: 2.597
+    weight: 1.0
+
+coordination_constraints:
+  - center_atom: Al
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 6
+    cutoff_distance: 2.597
+    weight: 1.5
+  - center_atom: O
+    neighbor_atom: X
+    cn_min: 4
+    cn_max: 4
+    cutoff_distance: 2.597
+    weight: 1.0
+
+# Cutoff for the auto X-O-X angle constraint injected beside the explicit
+# O(X) coordination constraint: the same measured O cutoff (ADR-0004).
+auto_coupling_cutoff: 2.597
+
+tree_search:
+  max_sites: 4
+  max_formula_units: 6
+
+optimization:
+  n_restarts: 6
+  cma_maxiter: 250
+  refine_maxiter: 300
+  seed: 42

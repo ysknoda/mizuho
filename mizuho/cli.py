@@ -8,16 +8,29 @@ import yaml
 
 from .composition import _all_charges_zero, parse_composition
 from .data import WYCKOFF_DB
+from .diagnostics import (
+    bound_contacts, lattice_names, print_coordination_table, print_diagnostics,
+    print_symmetry_ladder,
+)
+from .io.cif import cif_to_mizuho, write_cif
 from .io.poscar import write_poscar
 from .io.report import print_summary
+from .objective.breakdown import error_breakdown, print_error_breakdown
+from .objective.energy import compute_error
 from .lattice import CRYSTAL_SYSTEM_OF_SG, get_lattice_system
 from .optimize.driver import optimize_one_assignment
 from .pipeline import (
     _optimize_candidates_parallel, _run_auto_composition_mode,
-    _run_composition_pool, build_sg_config, search_and_rank,
+    _run_composition_pool, build_sg_config, promote_to_detected_supergroup,
+    search_and_rank,
 )
 from .search import auto_search_spacegroups
-from .structure import assignments_to_sites, resolve_fixed_assignment
+from .normalizer import (
+    assignment_key, canonical_key, letter_permutations, polar_directions,
+)
+from .objective.penalties import reject_removed_keys
+from .structure import assignments_to_sites, build_structure, resolve_fixed_assignment
+from .symmetry import SUCCESS_TOLERANCE, hall_number_of_sg
 
 
 def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
@@ -46,39 +59,12 @@ def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
               f"(per-element ratios: {ratios})."); sys.exit(1)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Crystal structure predictor v6 - automatic space-group search.")
-    parser.add_argument("input", help="YAML input file")
-    parser.add_argument("--output", default=None,
-                        help="Output POSCAR file (default: <comp>_rank1.vasp)")
-    parser.add_argument("--top", type=int, default=1,
-                        help="Write POSCAR for top-N best structures (default: 1)")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Print detailed error breakdown")
-    parser.add_argument("--seed", type=int, default=None,
-                        help="Random seed for reproducibility. Propagated "
-                             "consistently to Phase 0 (space-group "
-                             "auto-search), Phase 1, and Phase 2 (CMA-ES). "
-                             "Without --seed, Phase 2 remains non-"
-                             "deterministic (OS entropy) by default, "
-                             "matching prior behaviour.")
-    parser.add_argument("--workers", "-j", type=int, default=None,
-                        help="Number of parallel worker processes for "
-                             "Phase 2 candidate optimisation (default: "
-                             "sequential, i.e. today's behaviour). "
-                             "Overrides parallel.candidate_workers in the "
-                             "YAML config.")
-    args = parser.parse_args()
-
+def _cmd_run(args) -> None:
+    """`mizuho run`: predict structures (docs/adr/0013-cli-subcommands.md)."""
     # ----------------------------------------------------------------
     # Load config
     # ----------------------------------------------------------------
-    input_path = Path(args.input)
-    if not input_path.exists():
-        print(f"ERROR: {input_path} not found."); sys.exit(1)
-    with open(input_path) as fh:
-        config = yaml.safe_load(fh)
+    config = _load_config(args.input)
 
     # A single injection point here propagates --seed to every downstream
     # consumer of config["optimization"]["seed"] (Phase 0 Stage 0-C,
@@ -281,6 +267,23 @@ def main():
     if not all_results:
         print("\nNo valid structures found across all space groups."); sys.exit(0)
 
+    # A structure whose detected symmetry is higher than the group it was
+    # optimised in is re-expressed and re-optimised there (ADR-0010),
+    # repeatedly, since the re-optimised structure may climb further.
+    promoted = []
+    for entry in all_results:
+        err, sg, asgn, best_p, structure, sg_config = entry
+        for _ in range(3):
+            if structure is None:
+                break
+            up = promote_to_detected_supergroup(sg, best_p, structure, sg_config, config,
+                                                opt_cfg, SUCCESS_TOLERANCE, verbose=True)
+            if up is None:
+                break
+            err, sg, asgn, best_p, structure, sg_config = up
+        promoted.append((err, sg, asgn, best_p, structure, sg_config))
+    all_results = promoted
+
     # ----------------------------------------------------------------
     # Global ranking
     # ----------------------------------------------------------------
@@ -316,9 +319,332 @@ def main():
 
         print_summary(structure, asgn, win_cfg, err,
                       param_vector=best_p)
+        print_diagnostics(structure, win_cfg, best_p, error_breakdown(best_p, win_cfg))
 
+        ext = "cif" if args.format == "cif" else "vasp"
         out_path = (args.output if args.output and top_n == 1
-                    else f"{comp}_rank{rank+1}.vasp")
-        write_poscar(structure, win_cfg, out_path)
+                    else f"{comp}_rank{rank+1}.{ext}")
+        if args.format == "cif":
+            write_cif(best_p, win_cfg, out_path, title=f"{comp}_rank{rank+1}")
+            print(f"\n  CIF written: {out_path}")
+        else:
+            write_poscar(structure, win_cfg, out_path)
 
     print("\n  Done.\n")
+
+
+# ======================================================================
+# Shared helpers for the subcommands
+# ======================================================================
+
+def _load_config(path: str) -> dict:
+    input_path = Path(path)
+    if not input_path.exists():
+        print(f"ERROR: {input_path} not found."); sys.exit(1)
+    with open(input_path) as fh:
+        config = yaml.safe_load(fh)
+    try:
+        reject_removed_keys(config)
+    except ValueError as e:
+        print(f"ERROR: {e}"); sys.exit(1)
+    return config
+
+
+def _reference_config(config: dict, cif_path: str):
+    """The config's constraints applied to a reference CIF's own topology,
+    in mizuho's setting (mizuho.io.cif.cif_to_mizuho)."""
+    try:
+        ref = cif_to_mizuho(cif_path)
+    except (OSError, ValueError, KeyError) as e:
+        print(f"ERROR: cannot read {cif_path}: {e}"); sys.exit(1)
+    if config.get("spacegroup") not in (None, ref.spacegroup):
+        print(f"  NOTE: config names SG {config['spacegroup']}, the reference is "
+              f"SG {ref.spacegroup}; the reference's group is used.")
+    sg_config = build_sg_config(config, ref.spacegroup)
+    sg_config["spacegroup"] = ref.spacegroup
+    sg_config["wyckoff_sites"] = ref.config()["wyckoff_sites"]
+    return ref, sg_config
+
+
+def _lattice_dict(sg: int, param_vector) -> dict:
+    return dict(zip(lattice_names(sg), (float(v) for v in param_vector)))
+
+
+# ======================================================================
+# check
+# ======================================================================
+
+def _cmd_check(args) -> None:
+    """Evaluate the objective at a reference structure. No optimisation."""
+    config = _load_config(args.config)
+    ref, cfg = _reference_config(config, args.reference)
+    st = build_structure(ref.param_vector, cfg)
+    bd = error_breakdown(ref.param_vector, cfg)
+
+    print(f"\n{'='*65}")
+    print(f"  CHECK  {args.reference}")
+    print(f"{'='*65}")
+    print(f"  Space group : {ref.spacegroup}   (read at symprec {ref.symprec:g} A)")
+    print(f"  Assignment  : {ref.label()}")
+    lat = _lattice_dict(ref.spacegroup, ref.param_vector)
+    print("  Lattice     : " + "  ".join(f"{k}={v:.4f}" for k, v in lat.items()))
+    print(f"  Objective   : {bd['total']:.8f}")
+    print_error_breakdown(bd)
+    print_coordination_table(bd)
+    print_symmetry_ladder(st)
+    if "lattice_bounds" in cfg:
+        from .structure import build_bounds
+        for name, (lo, hi), v in zip(lattice_names(ref.spacegroup), build_bounds(cfg),
+                                     ref.param_vector):
+            if not lo <= v <= hi:
+                print(f"  WARNING: reference {name} = {v:.4f} lies outside "
+                      f"lattice_bounds [{lo}, {hi}]")
+        for name, side, v, _ in bound_contacts(ref.param_vector, cfg):
+            print(f"  NOTE: reference {name} = {v:.4f} is on the {side} bound")
+
+
+# ======================================================================
+# fit
+# ======================================================================
+
+# ADR-0005's global-minimum gate: converged means error <= reference + 1e-3,
+# accurate means every lattice length within 3% of the reference.
+_CONVERGED_MARGIN = 1e-3
+_LATTICE_TARGET = 0.03
+
+
+def _cmd_fit(args) -> None:
+    """Fix a reference's topology, optimise, and compare with the reference."""
+    config = _load_config(args.config)
+    if args.seed is not None:
+        config.setdefault("optimization", {})["seed"] = args.seed
+    ref, cfg = _reference_config(config, args.reference)
+    err_ref = compute_error(ref.param_vector, cfg)
+
+    opt_cfg = dict(cfg.get("optimization", {}))
+    if args.budget != 1:
+        opt_cfg["n_restarts"] = int(opt_cfg.get("n_restarts", 8) * args.budget)
+        opt_cfg["cma_maxiter"] = int(opt_cfg.get("cma_maxiter", 300) * args.budget)
+    asgn = resolve_fixed_assignment(ref.spacegroup, ref.specs)
+    print(f"\n  Fitting {ref.label()} in SG {ref.spacegroup} "
+          f"(n_restarts={opt_cfg.get('n_restarts')}, cma_maxiter={opt_cfg.get('cma_maxiter')}) ...")
+    best_p, best_e, structure = optimize_one_assignment(
+        asgn, cfg, opt_cfg, verbose=args.verbose, label=ref.label())
+    if structure is None:
+        print("ERROR: no structure obtained."); sys.exit(1)
+
+    print(f"\n{'='*65}")
+    print(f"  FIT  {args.reference}")
+    print(f"{'='*65}")
+    print(f"  Objective at reference : {err_ref:.8f}")
+    print(f"  Objective at fit       : {best_e:.8f}")
+    lat_ref = _lattice_dict(ref.spacegroup, ref.param_vector)
+    lat_fit = _lattice_dict(ref.spacegroup, best_p)
+    print(f"\n  {'param':>6}  {'reference':>10}  {'fit':>10}  {'deviation':>10}")
+    worst = 0.0
+    for k in lat_ref:
+        if k in ("a", "b", "c"):
+            dev = (lat_fit[k] - lat_ref[k]) / lat_ref[k]
+            worst = max(worst, abs(dev))
+            print(f"  {k:>6}  {lat_ref[k]:10.4f}  {lat_fit[k]:10.4f}  {100 * dev:+9.2f}%")
+        else:
+            print(f"  {k:>6}  {lat_ref[k]:10.3f}  {lat_fit[k]:10.3f}  "
+                  f"{lat_fit[k] - lat_ref[k]:+8.3f} deg")
+    converged = best_e <= err_ref + _CONVERGED_MARGIN
+    print(f"\n  converged (error <= reference + {_CONVERGED_MARGIN:g}) : {'yes' if converged else 'NO'}")
+    print(f"  lattice within {100 * _LATTICE_TARGET:g}% of reference       : "
+          f"{'yes' if worst <= _LATTICE_TARGET else 'NO'} (worst {100 * worst:.2f}%)")
+    if best_e < err_ref and worst > _LATTICE_TARGET:
+        print("  WARNING: the fit scores below the reference while its lattice is "
+              "outside the target -- an impostor "
+              "(docs/adr/0007-the-real-structure-must-be-the-unique-minimum.md)")
+    print_diagnostics(structure, cfg, best_p, error_breakdown(best_p, cfg))
+    if args.output:
+        write_cif(best_p, cfg, args.output, title="fit")
+        print(f"\n  CIF written: {args.output}")
+
+
+# ======================================================================
+# candidates
+# ======================================================================
+
+def _parse_label(text: str):
+    pairs = []
+    for tok in text.replace("+", " ").split():
+        el, le = tok.split("@")
+        pairs.append((el, le))
+    return pairs
+
+
+def _cmd_candidates(args) -> None:
+    """Phase 1 only: the ranking after merging equivalent assignments."""
+    config = _load_config(args.config)
+    sg = config.get("spacegroup")
+    if sg is None:
+        print("ERROR: candidates needs a fixed 'spacegroup'."); sys.exit(1)
+    sg = int(sg)
+    base_seed = args.seed if args.seed is not None else config.get("optimization", {}).get("seed", 0)
+    seeds = [base_seed + k for k in range(args.seeds)]
+
+    rankings = []
+    for seed in seeds:
+        sg_config = build_sg_config(config, sg)
+        sg_config["optimization"] = dict(sg_config.get("optimization", {}), seed=seed)
+        asgns, n_found, _ = search_and_rank(sg_config, max_cands=10**9, verbose=args.verbose)
+        rankings.append([assignment_key(sg, a) for a in asgns])
+        print(f"  seed {seed}: {n_found} enumerated, {len(asgns)} equivalence classes")
+    if not rankings[0]:
+        print("  No candidates."); return
+
+    first = rankings[0]
+    rank_of = [{k: i + 1 for i, k in enumerate(r)} for r in rankings]
+    entries = {e.letter: e for e in WYCKOFF_DB[sg]}
+
+    def n_free(key):
+        return sum(len(entries[le].free_params) for _, le in key)
+
+    strata = sorted({n_free(k) for k in first})
+    print(f"  {len(strata)} free-parameter strata: {strata}")
+
+    def row(key):
+        ranks = [r.get(key) for r in rank_of]
+        within = sum(1 for k in first[:first.index(key) + 1] if n_free(k) == n_free(key))
+        text = " ".join(f"{el}@{le}" for el, le in key)
+        spread = (f"  ranks {ranks}  worst {max(ranks)}  spread {max(ranks) - min(ranks)}"
+                  if len(ranks) > 1 else "")
+        return (f"  {first.index(key) + 1:>6}  free {n_free(key):>3}  "
+                f"stratum-rank {within:>5}  {text}{spread}")
+
+    if args.find:
+        key = canonical_key(sg, _parse_label(args.find))
+        if key not in first:
+            print(f"  {args.find}: not among the {len(first)} classes"); sys.exit(1)
+        print(row(key))
+        return
+    print(f"\n  {'rank':>6}  {'free':>8}  {'stratum':>17}  assignment")
+    for key in first[:args.top]:
+        print(row(key))
+
+
+# ======================================================================
+# wyckoff
+# ======================================================================
+
+def _format_slot(slot) -> str:
+    from fractions import Fraction
+    def lin(coeffs):
+        return "".join(f"{'+' if k > 0 else '-'}{abs(k) if abs(k) != 1 else ''}{n}"
+                       for n, k in coeffs.items()).lstrip("+")
+    if isinstance(slot, tuple):
+        coeffs, off = slot
+        return lin(coeffs) + (f"+{Fraction(off).limit_denominator(24)}" if off else "")
+    if isinstance(slot, dict):
+        return lin(slot)
+    return str(Fraction(float(slot)).limit_denominator(24))
+
+
+def _cmd_wyckoff(args) -> None:
+    """List a space group's Wyckoff positions in mizuho's setting."""
+    import spglib
+    import warnings
+    sg = args.spacegroup
+    if sg not in WYCKOFF_DB:
+        print(f"ERROR: no space group {sg}."); sys.exit(1)
+    hall = hall_number_of_sg(sg)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        t = spglib.get_spacegroup_type(hall)
+    print(f"  SG {sg}  {t.international_full}  Hall {hall} '{t.hall_symbol}'  "
+          f"setting choice '{t.choice or '-'}'  ({get_lattice_system(sg)})")
+    classes = {}
+    for perm in letter_permutations(sg):
+        for a, b in perm.items():
+            classes.setdefault(a, set()).add(b)
+    polar = polar_directions(sg)
+    if len(polar):
+        print(f"  Floating origin along: {[list(map(float, v.round(6))) for v in polar]}")
+    print(f"\n  {'letter':>6}  {'mult':>4}  {'free':>7}  {'representative':<24}  equivalent")
+    for e in sorted(WYCKOFF_DB[sg], key=lambda e: (e.multiplicity, e.letter)):
+        rep = "(" + ", ".join(_format_slot(s) for s in e.coord_template) + ")"
+        eq = sorted(classes.get(e.letter, {e.letter}) - {e.letter})
+        print(f"  {e.letter:>6}  {e.multiplicity:>4}  {','.join(e.free_params) or '-':>7}  "
+              f"{rep:<24}  {' '.join(eq) or '-'}")
+
+
+# ======================================================================
+# suggest (reserved)
+# ======================================================================
+
+def _cmd_suggest(args) -> None:
+    print("ERROR: 'suggest' is reserved. Generating constraints from a reference "
+          "waits for docs/plan-objective-uniqueness.md (docs/adr/0013-cli-subcommands.md).")
+    sys.exit(2)
+
+
+# ======================================================================
+# Entry point
+# ======================================================================
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="mizuho",
+        description="Crystal structure generation from composition, space group "
+                    "and bonding constraints.")
+    sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+
+    p = sub.add_parser("run", help="predict structures from a YAML config")
+    p.add_argument("input", help="YAML input file")
+    p.add_argument("--output", default=None,
+                   help="Output file (default: <comp>_rank1.vasp or .cif)")
+    p.add_argument("--format", choices=("poscar", "cif"), default="poscar",
+                   help="Output format for single-composition runs (default: poscar)")
+    p.add_argument("--top", type=int, default=1,
+                   help="Write the top-N best structures (default: 1)")
+    p.add_argument("--verbose", action="store_true",
+                   help="Print detailed error breakdown")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Random seed, propagated to Phase 0, Phase 1 and Phase 2. "
+                        "Without --seed the config's optimization.seed is used, "
+                        "if any.")
+    p.add_argument("--workers", "-j", type=int, default=None,
+                   help="Parallel worker processes for Phase 2 candidate "
+                        "optimisation (overrides parallel.candidate_workers).")
+    p.set_defaults(func=_cmd_run)
+
+    p = sub.add_parser("check", help="evaluate the objective at a reference CIF (no optimisation)")
+    p.add_argument("config", help="YAML config whose constraints are evaluated")
+    p.add_argument("reference", help="reference structure (CIF)")
+    p.set_defaults(func=_cmd_check)
+
+    p = sub.add_parser("fit", help="optimise a reference CIF's topology and compare with it")
+    p.add_argument("config", help="YAML config")
+    p.add_argument("reference", help="reference structure (CIF)")
+    p.add_argument("--budget", type=float, default=1.0,
+                   help="Multiply n_restarts and cma_maxiter by this (the "
+                        "global-minimum gate uses 4)")
+    p.add_argument("--seed", type=int, default=None, help="Random seed")
+    p.add_argument("--output", default=None, help="Write the fitted structure as CIF")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=_cmd_fit)
+
+    p = sub.add_parser("candidates", help="run Phase 1 only and list its ranking")
+    p.add_argument("config", help="YAML config with a fixed spacegroup")
+    p.add_argument("--seeds", type=int, default=1,
+                   help="Rank over this many consecutive seeds and report the spread")
+    p.add_argument("--seed", type=int, default=None, help="First seed (default: config's)")
+    p.add_argument("--top", type=int, default=50, help="Rows to list (default: 50)")
+    p.add_argument("--find", default=None,
+                   help="Report only this assignment's class, e.g. 'Mg@a Al@d O@e'")
+    p.add_argument("--verbose", action="store_true")
+    p.set_defaults(func=_cmd_candidates)
+
+    p = sub.add_parser("wyckoff", help="list a space group's Wyckoff positions in mizuho's setting")
+    p.add_argument("spacegroup", type=int)
+    p.set_defaults(func=_cmd_wyckoff)
+
+    p = sub.add_parser("suggest", help="(reserved) generate constraints from a reference")
+    p.add_argument("reference")
+    p.set_defaults(func=_cmd_suggest)
+
+    args = parser.parse_args(argv)
+    args.func(args)

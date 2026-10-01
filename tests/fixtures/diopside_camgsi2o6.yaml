@@ -42,8 +42,9 @@ lattice_bounds:
 bond_constraints:
   - atom1: Si
     atom2: O
+    # Band: reference span 1.584-1.686 A widened by 2% (ADR-0007; phase E).
     distance_min: 1.55
-    distance_max: 1.70
+    distance_max: 1.72
     # Measured at the reference structure (ADR-0004): Si-O first
     # shell ends 1.686 A, second starts 3.165 A. The default
     # distance_max*1.5 swept the second shell in and penalised it.
@@ -51,8 +52,9 @@ bond_constraints:
     weight: 1.0
   - atom1: Mg
     atom2: O
+    # Band: reference span 2.051-2.116 A widened by 2% (ADR-0007; phase E).
     distance_min: 2.00
-    distance_max: 2.20
+    distance_max: 2.16
     # Measured at the reference structure (ADR-0004): Mg-O first
     # shell ends 2.116 A, second starts 3.372 A. The default
     # distance_max*1.5 swept the second shell in and penalised it.
@@ -60,8 +62,9 @@ bond_constraints:
     weight: 1.0
   - atom1: Ca
     atom2: O
+    # Band: reference span 2.349-2.719 A widened by 2% (ADR-0007; phase E).
     distance_min: 2.30
-    distance_max: 2.85
+    distance_max: 2.78
     # Measured at the reference structure (ADR-0004): Ca-O first
     # shell ends 2.719 A, second starts 3.47 A. The default
     # distance_max*1.5 swept the second shell in and penalised it.
@@ -97,6 +100,18 @@ coordination_constraints:
     # Measured at the reference structure (ADR-0004).
     cutoff_distance: 3.095
     weight: 1.5
+  # Polymerisation (phase C): a single-chain silicate, 8 Si x CN 4 = 32
+  # Si-O bonds over 24 O in [1, 2] forces {1: 16, 2: 8}, as measured.
+  - center_atom: O
+    neighbor_atom: Si
+    cn_min: 1
+    cn_max: 2
+    cutoff_distance: 2.425
+    weight: 1.0
+
+# Auto O(X) coupling cutoff measured at the reference (ADR-0004, phase A):
+# O-cation first shell ends 2.719 A, second starts 3.165 A.
+auto_coupling_cutoff: 2.942
 
 # Auto-computed from composition (phase I-3, see the mizuho-py-wychoff-
 # position plan). cell_validity_constraint's default g_min=0.3 should be

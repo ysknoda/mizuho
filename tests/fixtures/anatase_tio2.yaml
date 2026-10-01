@@ -1,0 +1,72 @@
+# Anatase TiO2, space group 141 (I4_1/amd), Z = 4. Body-centred lattice;
+# mizuho's setting is origin choice 1, the reference CIF is origin
+# choice 2 (reader converts; the reference lands on Ti@b O@e, the other
+# supplied refinement on the equivalent Ti@a O@e -- ADR-0011).
+# Reference: tests/fixtures/reference/anatase_origin2.cif (COD 1526931,
+# a = 3.771, c = 9.430 A).
+#
+# Cited coordination numbers: Ti 6 (octahedral), O 3. Values measured at
+# the reference (ADR-0004, ADR-0007): Ti-O first shell 1.924-1.975 A,
+# second shell from 3.824 A.
+#
+# Charge balance: Ti(+4) + 2*O(-2) = 0.
+composition: TiO2
+spacegroup: 141
+spacegroup_symbol: I4_1/amd
+
+ionic_charges:
+  Ti: 4
+  O: -2
+
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+
+lattice_bounds:
+  a: [3.3, 4.3]
+  c: [8.3, 10.5]
+
+bond_constraints:
+  - atom1: Ti
+    atom2: O
+    # Span 1.924-1.975 A widened by 2% (ADR-0007).
+    distance_min: 1.88
+    distance_max: 2.02
+    cutoff: 2.899
+    weight: 1.0
+
+angle_constraints:
+  - atom_center: Ti
+    atom_neighbor: O
+    # Measured 78.52-101.48 deg below the 150 deg trans threshold.
+    angle_min: 75.0
+    angle_max: 105.0
+    angle_cutoff: 2.899
+    weight: 1.0
+
+coordination_constraints:
+  - center_atom: Ti
+    neighbor_atom: O
+    cn_min: 6
+    cn_max: 6
+    cutoff_distance: 2.899
+    weight: 1.5
+  - center_atom: O
+    neighbor_atom: X
+    cn_min: 3
+    cn_max: 3
+    cutoff_distance: 2.899
+    weight: 1.0
+
+# Cutoff for the auto X-O-X angle constraint injected beside the explicit
+# O(X) coordination constraint: the same measured O cutoff (ADR-0004).
+auto_coupling_cutoff: 2.899
+
+tree_search:
+  max_sites: 4
+  max_formula_units: 4
+
+optimization:
+  n_restarts: 6
+  cma_maxiter: 250
+  refine_maxiter: 300
+  seed: 42

@@ -1,0 +1,28 @@
+# Known-answer fixtures for the automatic space-group search
+
+No `spacegroup`: the search chooses it. Success is judged on the **detected**
+symmetry of the returned structure, not the label the search reports
+([ADR-0010](../../../docs/adr/0010-success-is-the-detected-symmetry.md)):
+
+| fixture | expected | why a set |
+|---|---|---|
+| `nacl.yaml` | 225 | — |
+| `cscl.yaml` | 221 | — |
+| `si.yaml` | {227, 194} | cubic / hexagonal diamond are polytypes |
+| `zno.yaml` | {186, 216} | wurtzite / zinc blende are polytypes |
+| `tio2.yaml` | {136, 141} | rutile / anatase are polytypes |
+
+Unlike `../nacl.yaml`, which states only a bond band (an isolated Na-Cl pair
+in a large cell scores zero against it), each fixture here states the cited
+coordination numbers, so the answer is determined by first-shell geometry.
+Cutoffs sit at the midpoint of the first/second shell gap of the ideal
+structure (ADR-0004); bond bands are the first-shell span widened by 2%
+(ADR-0007):
+
+| compound | reference lattice | first shell | second shell | cutoff |
+|---|---|---|---|---|
+| NaCl | a = 5.6402 A | Na-Cl 2.820 A (6) | 4.885 A | 3.85 |
+| CsCl | a = 4.123 A | Cs-Cl 3.571 A (8) | 6.837 A | 5.20 |
+| Si | a = 5.431 A | Si-Si 2.352 A (4) | 3.840 A | 3.10 |
+| ZnO | `../reference/wurtzite.cif` | Zn-O 1.975-1.991 A (4) | 3.218 A | 2.60 |
+| TiO2 | rutile a = 4.594, c = 2.959, x = 0.3049 | Ti-O 1.948-1.981 A (6) | 3.487 A | 2.73 |

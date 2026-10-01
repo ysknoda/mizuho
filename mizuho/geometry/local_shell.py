@@ -439,6 +439,49 @@ def rank_by_feasibility(
     return scored
 
 
+# Deterministic cost of a mini-shell solve, in "reference seconds".
+# The time-budgeted decisions below (stage-1 shortlist size, which narrow
+# groups to keep) used to divide a wall-clock budget by a wall-clock probe,
+# so a seeded Phase 1 ranking still changed with machine load
+# (docs/adr/0012-phase-1-is-seeded-and-ranked-over-several-seeds.md).
+# They now count the objective evaluations a seeded probe actually makes
+# (deterministic) and convert with a per-evaluation cost model:
+#     seconds/evaluation = a + b * n_atoms**2 + c * n_atoms * n_ops
+# (overhead; all-image pair distances; orbit expansion). Least-squares fit
+# to twelve probes on six fixtures (SG 15, 58, 141, 167, 186, 227; 4-56
+# atoms, 8-192 operations) measured 2026-10-01 on the development machine:
+# within 6% on five fixtures and 34% on the smallest (wurtzite, 4 atoms).
+# The budgets keep their original meaning, now in seconds of that machine.
+_COST_A = 7.17e-4
+_COST_B = 2.46e-6
+_COST_C = 2.38e-6
+
+
+def _seconds_per_evaluation(mini_config: dict) -> float:
+    from ..data import get_ops
+    n_atoms = sum(s["multiplicity"] for s in mini_config["wyckoff_sites"])
+    n_ops = len(get_ops(mini_config["spacegroup"])[0])
+    return _COST_A + _COST_B * n_atoms ** 2 + _COST_C * n_atoms * n_ops
+
+
+def _reference_seconds(mini_config: dict, optimize_fn: Callable, n_restarts: int,
+                       maxiter: int, seed: Optional[int]) -> Tuple[float, float]:
+    """Run one solve_local_shell and return (error, cost in reference
+    seconds). The cost is evaluations counted x the cost model above, so
+    with a fixed seed it does not depend on the machine or its load."""
+    count = [0]
+
+    def counting(objective, **kwargs):
+        def counted(pv):
+            count[0] += 1
+            return objective(pv)
+        return optimize_fn(objective=counted, **kwargs)
+
+    _, err = solve_local_shell(mini_config, counting, n_restarts=n_restarts,
+                               maxiter=maxiter, seed=seed)
+    return err, count[0] * _seconds_per_evaluation(mini_config)
+
+
 def _probe_stage2_cost(assignment: list, config: dict, optimize_fn: Callable,
                         joint_groups: List[dict], n_restarts: int, maxiter: int,
                         seed: Optional[int]) -> float:
@@ -452,14 +495,13 @@ def _probe_stage2_cost(assignment: list, config: dict, optimize_fn: Callable,
     solve_local_shell call, the same cost a stage-2 cache miss would pay
     anyway -- so the caller only invokes this when the count-only check
     would otherwise skip stage 1."""
-    import time
     from ..structure import assignments_to_sites
 
     if not joint_groups:
         return 0.0
     sites = assignments_to_sites(assignment)
     elems_here = {s["element"] for s in sites}
-    t0 = time.time()
+    total = 0.0
     for group in joint_groups:
         if not (group["elements"] & elems_here):
             continue
@@ -467,9 +509,8 @@ def _probe_stage2_cost(assignment: list, config: dict, optimize_fn: Callable,
         if not indices:
             continue
         mini_config = build_mini_config(config, sites, group, indices)
-        solve_local_shell(mini_config, optimize_fn, n_restarts=n_restarts,
-                           maxiter=maxiter, seed=seed)
-    return time.time() - t0
+        total += _reference_seconds(mini_config, optimize_fn, n_restarts, maxiter, seed)[1]
+    return total
 
 
 def _prune_expensive_narrow_groups(
@@ -518,7 +559,6 @@ def _prune_expensive_narrow_groups(
     work: a kept group's probe IS its cache's first real entry, not an
     extra call on top of it. A dropped group's probe is the only cost
     paid for excluding it."""
-    import time
     from ..structure import assignments_to_sites
 
     priced: List[Tuple[float, dict, tuple, float]] = []
@@ -544,10 +584,8 @@ def _prune_expensive_narrow_groups(
             continue   # this group never actually applies to any candidate here
 
         mini_config = build_mini_config(config, probe_sites, group, probe_indices)
-        t0 = time.time()
-        _, err = solve_local_shell(mini_config, optimize_fn, n_restarts=n_restarts,
-                                    maxiter=maxiter, seed=seed)
-        per_call = time.time() - t0
+        err, per_call = _reference_seconds(mini_config, optimize_fn, n_restarts,
+                                           maxiter, seed)
         projected = len(keys_seen) * per_call
         priced.append((projected, group, probe_key, err))
 

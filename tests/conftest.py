@@ -41,3 +41,22 @@ def ternary_ionic_config():
 @pytest.fixture
 def adamite_config():
     return _load_fixture("adamite")
+
+
+# ---------------------------------------------------------------------------
+# Search gates (docs/adr/0005-five-gates-for-the-search.md) take minutes to
+# hours per mineral, so they run only on request: `pytest --run-gates`.
+# ---------------------------------------------------------------------------
+
+def pytest_addoption(parser):
+    parser.addoption("--run-gates", action="store_true", default=False,
+                     help="run the hours-long search gates (tests marked 'gate')")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-gates"):
+        return
+    skip = pytest.mark.skip(reason="search gate: run with --run-gates")
+    for item in items:
+        if "gate" in item.keywords:
+            item.add_marker(skip)

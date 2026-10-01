@@ -1,0 +1,12 @@
+# Si, automatic space-group search. Expected detected group 227 or its
+# polytype 194 (hexagonal diamond): first-shell constraints cannot tell them apart.
+composition: Si
+ionic_charges: {Si: 0}
+bond_constraints:
+  - {atom1: Si, atom2: Si, distance_min: 2.30, distance_max: 2.40, cutoff: 3.10, weight: 1.0}
+angle_constraints:
+  - {atom_center: Si, atom_neighbor: Si, angle_min: 105.0, angle_max: 115.0, angle_cutoff: 3.10, weight: 1.0}
+coordination_constraints:
+  - {center_atom: Si, neighbor_atom: Si, cn_min: 4, cn_max: 4, cutoff_distance: 3.10, weight: 1.5}
+tree_search: {max_sites: 2, max_formula_units: 8}
+optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}

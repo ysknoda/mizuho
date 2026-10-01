@@ -1,0 +1,12 @@
+# NaCl, automatic space-group search. Expected detected group 225.
+composition: NaCl
+ionic_charges: {Na: 1, Cl: -1}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+bond_constraints:
+  - {atom1: Na, atom2: Cl, distance_min: 2.76, distance_max: 2.88, cutoff: 3.85, weight: 1.0}
+coordination_constraints:
+  - {center_atom: Na, neighbor_atom: Cl, cn_min: 6, cn_max: 6, cutoff_distance: 3.85, weight: 1.5}
+  - {center_atom: Cl, neighbor_atom: Na, cn_min: 6, cn_max: 6, cutoff_distance: 3.85, weight: 1.0}
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}

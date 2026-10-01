@@ -17,10 +17,15 @@ fluorine mineral the fixture models. Both were caught by exactly this
 check.
 """
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 import yaml
 
+from mizuho.data import WYCKOFF_DB
+from mizuho.io.cif import cif_to_mizuho
 from mizuho.lattice import all_image_distances
 from mizuho.objective.breakdown import error_breakdown
 from mizuho.pipeline import build_sg_config
@@ -29,6 +34,7 @@ from mizuho.structure import (
 )
 
 FIXTURES = "tests/fixtures"
+REFERENCE_DIR = f"{FIXTURES}/reference"
 
 
 class Reference:
@@ -46,6 +52,23 @@ class Reference:
         cfg = {"spacegroup": self.sg, "wyckoff_sites": assignments_to_sites(asg)}
         pv = np.array(self.lattice + [c for _, _, p in self.sites for c in p])
         return cfg, pv, asg
+
+    @classmethod
+    def from_cif(cls, fixture, cif, source, bonds, atom_counts):
+        """A reference read from a CIF and expressed in mizuho's setting by
+        the reader (mizuho.io.cif), instead of transcribed by hand."""
+        m = cif_to_mizuho(f"{REFERENCE_DIR}/{cif}")
+        entries = {e.letter: e for e in WYCKOFF_DB[m.spacegroup]}
+        n_free = sum(len(entries[s["letter"]].free_params) for s in m.specs)
+        n_lat = len(m.param_vector) - n_free
+        params = list(m.param_vector[n_lat:])
+        sites = []
+        for spec in m.specs:
+            k = len(entries[spec["letter"]].free_params)
+            sites.append((spec["element"], spec["letter"], params[:k]))
+            params = params[k:]
+        return cls(fixture, m.spacegroup, sites, list(m.param_vector[:n_lat]),
+                   source, bonds, atom_counts)
 
 
 _REFS = {
@@ -104,6 +127,46 @@ _REFS = {
         "Zn2 CN 6 (octahedral)",
         {"As": (["O"], 4, 1.55, 1.85)},
         {"As": 4, "Zn": 8, "O": 20}),
+
+    # Minerals added for the untested space groups and lattice types
+    # (docs/plan-verification-and-tree-search.md). Read by the CIF reader;
+    # the bond ranges are the plan's verification table, stated
+    # independently of the fixtures' bands.
+    "corundum_al2o3": Reference.from_cif(
+        "corundum_al2o3", "corundum_H.cif",
+        "Al2O3 corundum, R-3c on hexagonal axes (COD 1000017); Al-O 1.855-1.972 A, CN 6",
+        {"Al": (["O"], 6, 1.85, 1.98)},
+        {"Al": 12, "O": 18}),
+    "quartz_sio2": Reference.from_cif(
+        "quartz_sio2", "quartz_sg152.cif",
+        "SiO2 alpha-quartz, P3_121 (COD 1011097); Si-O 1.614-1.624 A, CN 4",
+        {"Si": (["O"], 4, 1.61, 1.63)},
+        {"Si": 3, "O": 6}),
+    "anatase_tio2": Reference.from_cif(
+        "anatase_tio2", "anatase_origin2.cif",
+        "TiO2 anatase, I4_1/amd origin choice 2 (COD 1526931); Ti-O 1.924-1.975 A, CN 6",
+        {"Ti": (["O"], 6, 1.92, 1.98)},
+        {"Ti": 4, "O": 8}),
+    "forsterite_mg2sio4": Reference.from_cif(
+        "forsterite_mg2sio4", "forsterite_Pbnm.cif",
+        "Mg2SiO4 forsterite, Pnma given as Pbnm (COD 9016385); "
+        "Mg-O 2.045-2.210 A CN 6, Si-O 1.614-1.655 A CN 4",
+        {"Si": (["O"], 4, 1.61, 1.66), "Mg": (["O"], 6, 2.04, 2.22)},
+        {"Mg": 8, "Si": 4, "O": 16}),
+    # Reference-structure gate only: its 51 free parameters (Z = 6) put
+    # the rank and global-minimum gates out of reach, and the fixture's
+    # Z = 1 model has no geometric correspondence to this cell (CONTEXT.md).
+    # Ca CN 6 or 7 across its three sites; Si-O 1.578-1.664 A.
+    "wollastonite_casio3": Reference.from_cif(
+        "wollastonite_casio3", "wollastonite.cif",
+        "CaSiO3 wollastonite, P-1, Z = 6 (COD 9005777, Ohashi 1984)",
+        {"Si": (["O"], 4, 1.57, 1.67)},
+        {"Ca": 6, "Si": 6, "O": 18}),
+    "wurtzite_zno": Reference.from_cif(
+        "wurtzite_zno", "wurtzite.cif",
+        "ZnO wurtzite, P6_3mc (COD 1577381); Zn-O 1.975 x3 / 1.991 A, CN 4",
+        {"Zn": (["O"], 4, 1.97, 2.00)},
+        {"Zn": 2, "O": 2}),
 }
 
 
@@ -157,6 +220,12 @@ def test_every_coordination_term_reports_the_cited_number(name):
     ("spinel_mgal2o4", 1e-3),
     ("diopside_camgsi2o6", 1e-3),
     ("topaz", 1e-3),
+    ("corundum_al2o3", 1e-3),
+    ("quartz_sio2", 1e-3),
+    ("anatase_tio2", 1e-3),
+    ("forsterite_mg2sio4", 1e-3),
+    ("wurtzite_zno", 1e-3),
+    ("wollastonite_casio3", 1e-3),
     # Adamite's reference is a 1937 refinement whose As-O distances span
     # 1.588-1.814 A, wider than the cited 1.60-1.75 A band, leaving ~0.03.
     # Recorded rather than tuned away (ADR-0004).
@@ -177,3 +246,43 @@ def test_objective_is_approximately_zero_at_the_reference_structure(name, ceilin
 
     total = error_breakdown(pv, full)["total"]
     assert total < ceiling, f"{name}: objective is {total:.6f} at its own reference structure"
+
+
+# ---------------------------------------------------------------------------
+# Impostor regression (ADR-0005): every point the global-minimum gate once
+# reached far from the published lattice must now score above the
+# published structure. Recorded by scripts/record_impostor.py.
+# ---------------------------------------------------------------------------
+
+IMPOSTORS = sorted(Path(FIXTURES, "impostors").glob("*.json"))
+
+# Written at the correct threshold and xfail-ed, never relaxed (ADR-0005).
+IMPOSTOR_XFAIL = {
+    "forsterite_mg2sio4_round2": "found AFTER phases A-G: error 8.1e-7 below the "
+                                 "published 7.8e-6 at a -7.9% / +5.2%",
+    "adamite_round2": "found AFTER phases A-G: error ~1e-17 at b +4.95%",
+    "anatase_tio2": "Ti-O 1.954/2.005 A and O-Ti-O angles all inside their "
+                    "bands: bond (2%) and angle (5 deg rounding) slack compound "
+                    "into a +4.9% / -2.8% lattice with every term at zero",
+}
+
+
+@pytest.mark.parametrize("path", [
+    pytest.param(p, id=p.stem, marks=pytest.mark.xfail(reason=IMPOSTOR_XFAIL[p.stem], strict=True))
+    if p.stem in IMPOSTOR_XFAIL else pytest.param(p, id=p.stem)
+    for p in IMPOSTORS])
+def test_known_impostor_scores_above_the_published_structure(path):
+    record = json.loads(path.read_text())
+    ref = _REFS[record["reference"]]
+    _, pv, asg = ref.build()
+    # Fixture names are <reference>[_<round tag>].json.
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    if record["reference"] == "adamite":
+        base["charge_balance_weight"] = 0.0     # undetermined H, as above
+    full = dict(build_sg_config(base, ref.sg))
+    full["wyckoff_sites"] = assignments_to_sites(asg)
+    impostor = error_breakdown(np.array(record["param_vector"]), full)["total"]
+    published = error_breakdown(pv, full)["total"]
+    assert impostor > published, (
+        f"{path.stem}: impostor {impostor:.8f} vs published {published:.8f} "
+        f"(lattice {record['lattice_deviation_percent']})")

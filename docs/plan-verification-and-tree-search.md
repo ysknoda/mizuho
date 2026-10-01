@@ -219,6 +219,46 @@ evaluations; L1 is then built on L2.
   small pieces of work.
 - Second-shell constraints to separate polytypes: a future feature (ADR-0010).
 
-## Waiting on
+## Status (2026-10-01)
 
-Nothing. The wurtzite reference arrived as COD 1577381.
+Steps 0-5 and step 6's phases A-G are implemented. Step 7 is **not started**: the
+objective is not unique (below), which is its precondition.
+
+| step | state |
+|---|---|
+| 0 | slow baseline at 0.1.0a2: 38/39 (`test_plateau_patience...`, 1e-6 gap, pre-existing). Extras `bayesian`, `mcmc`, `numba` install and pass in a clean venv. Review of the tree-search modules found and fixed: wall-clock-dependent Phase 1 shortlist (now counted evaluations x a fitted cost model), pycma seed 0 = clock seed, `seed + restart` stream sharing across consecutive seeds (now `restart_seed` via SeedSequence) |
+| 1 | `normalize_penalties` removed; rejected with an error naming ADR-0009 |
+| 2 | Phase 1 seeded from `optimization.seed`; spglib required |
+| 3 | `mizuho/io/cif.py`, `mizuho/symmetry.py`; all 12 CIFs map to the expected assignment (wurtzite and quartz idealised at 1e-3 A); fixtures and `_REFS` for corundum, quartz, anatase, forsterite, wurtzite; enantiomorph test |
+| 4 | `mizuho/normalizer.py` (indices P-1 8, Pnma 8, Fd-3m 2; all 230 groups); merge reduction: adamite 69,974 -> 19,152, diopside 39,650 -> 11,230, topaz 3,234 -> 1,644, wollastonite 8,192 -> 1,024; `candidates` |
+| 5 | floating origin kept (pinned vs free: same convergence, 10 seeds); success tolerance 1e-3 A (optimiser noise <= 1e-9 A, band-slack distortions 1e-2-1e-1 A); supergroup promotion in `run`; `fit`, `wyckoff`, `suggest` reserved |
+| 6 | phases A-G implemented; wollastonite reference 6.68 -> 1.4e-5 |
+
+### Gates after step 6 (latest code, x4 budget, seed 42; rank over seeds 42-46)
+
+| mineral | rank (worst of 5) | global minimum: lattice reached | verdict |
+|---|---|---|---|
+| quartz | 2 | +0.9 / -0.2 % | pass |
+| spinel | 1 | +0.6 % | pass |
+| wurtzite | 2 | -0.7 / -2.3 % | pass |
+| anatase | 1 | +3.6 / -1.6 % | impostor |
+| corundum | 1 | -2.8 / +6.6 % | impostor |
+| forsterite | 14 | b -9.7 %, on bound | impostor |
+| topaz | 42 | -12.7 / +14.3 / +14.0 %, on bounds | impostor |
+| diopside | **103** (8-103) | b +5.6 %, beta on bound | impostor, rank fail |
+| adamite | **4036** (1553-4036) | +5.1 / +5.8 / +7.3 %, on bounds | impostor, rank xfail |
+
+Automatic space-group search, judged on detected symmetry at 1e-3 A: NaCl -> 99,
+CsCl -> 51, Si -> 123, ZnO -> 123, TiO2 -> 47. None reaches its known answer.
+
+### Findings that need a design decision
+
+1. Six of nine minerals still have impostors after phases A-G: the second round of
+   ADR-0005's two-round cap. The design, not the parameters, needs revisiting.
+2. Integrality (ADR-0007) is defeated by an EVEN number of atoms parked at the cutoff:
+   Si with four neighbours 0.0002 A outside it scores soft CN 4.000 at integer CN 2.
+3. Since ADR-0009, Phase 1's local-shell score no longer separates the documented
+   feasible and infeasible AsO4 shells (two geometry tests xfail).
+4. Bond (2%) and angle (5 deg rounding) slack compound: anatase's impostor sits at zero
+   with every term satisfied.
+

@@ -1,0 +1,15 @@
+# ZnO, automatic space-group search. Expected detected group 186 or its
+# polytype 216 (zinc blende).
+composition: ZnO
+ionic_charges: {Zn: 2, O: -2}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+bond_constraints:
+  - {atom1: Zn, atom2: O, distance_min: 1.93, distance_max: 2.04, cutoff: 2.60, weight: 1.0}
+angle_constraints:
+  - {atom_center: Zn, atom_neighbor: O, angle_min: 105.0, angle_max: 115.0, angle_cutoff: 2.60, weight: 1.5}
+coordination_constraints:
+  - {center_atom: Zn, neighbor_atom: O, cn_min: 4, cn_max: 4, cutoff_distance: 2.60, weight: 1.5}
+  - {center_atom: O, neighbor_atom: Zn, cn_min: 4, cn_max: 4, cutoff_distance: 2.60, weight: 1.0}
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}

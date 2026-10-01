@@ -1,0 +1,21 @@
+{
+  "reference": "anatase_tio2",
+  "found_under": "x4 global-minimum gate before uniqueness-plan phases A-G (2026-10-01, seed 42)",
+  "error_found": 2.2858653621574274e-16,
+  "error_published": 9.4296509820705e-09,
+  "param_vector": [
+    3.953904916317304,
+    9.161660751682787,
+    0.7132600444825109
+  ],
+  "published_vector": [
+    3.771,
+    9.43,
+    0.29059999999999997
+  ],
+  "spacegroup": 141,
+  "lattice_deviation_percent": {
+    "a": 4.850302739785309,
+    "c": -2.8455911804582517
+  }
+}

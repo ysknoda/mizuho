@@ -172,10 +172,11 @@ def test_angle_exclude_neighbor_pairs_drops_only_the_excluded_pair():
     err_excluded   = compute_error(param_vector, config_excluded)
 
     # Zn-O-H1 = Zn-O-H2 = 90 deg satisfy [80,100] (0 penalty each);
-    # H1-O-H2 = 120 deg violates it by 20 deg -> penalty = weight*20^2 = 400,
-    # normalised by N(center)=1 -> exactly 400 when not excluded, exactly
-    # 0 once the H-H pair is dropped.
-    assert err_no_exclude == pytest.approx(400.0, abs=1e-3)
+    # H1-O-H2 = 120 deg violates it by 20 deg -> penalty =
+    # weight*(20/90)^2 (band-midpoint scale, ADR-0009), divided by
+    # N(center)=1 -> exactly that when not excluded, exactly 0 once the
+    # H-H pair is dropped.
+    assert err_no_exclude == pytest.approx((20.0 / 90.0) ** 2, abs=1e-6)
     assert err_excluded == pytest.approx(0.0, abs=1e-9)
 
 
@@ -188,7 +189,7 @@ def test_angle_exclude_neighbor_pairs_is_noop_when_absent():
           "angle_cutoff": 2.0, "weight": 1.0}
     config = {"spacegroup": 1, "wyckoff_sites": sites, "angle_constraints": [ac]}
 
-    assert compute_error(param_vector, config) == pytest.approx(400.0, abs=1e-3)
+    assert compute_error(param_vector, config) == pytest.approx((20.0 / 90.0) ** 2, abs=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -246,11 +247,11 @@ def test_midpoint_scale_eps_floor_when_midpoint_is_zero():
 
 
 # ---------------------------------------------------------------------------
-# normalize_penalties: relative-error formula, end-to-end through
-# compute_error, verified against hand-computed expected values (phase
-# I-1). Each helper builds a minimal SG1 (P1) synthetic structure so the
-# expected penalty is exactly known, mirroring _o_zn_h_h_param_vector's
-# pattern above.
+# Relative-error normalisation (always on, ADR-0009), end-to-end through
+# compute_error, verified against hand-computed expected values. Each
+# helper builds a minimal SG1 (P1) synthetic structure so the expected
+# penalty is exactly known, mirroring _o_zn_h_h_param_vector's pattern
+# above.
 # ---------------------------------------------------------------------------
 
 def _two_atom_case(elem1, elem2, d):
@@ -269,41 +270,31 @@ def _two_atom_case(elem1, elem2, d):
     return sites, np.array(lattice + p1 + p2)
 
 
-def test_bond_normalize_penalties_relative_error_matches_hand_calc():
+def test_bond_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _two_atom_case("Zn", "O", d=2.0)
     base_bc = {"atom1": "Zn", "atom2": "O", "distance_min": 1.0,
                "distance_max": 1.5, "cutoff": 5.0, "weight": 2.0}
-    cfg_raw  = {"spacegroup": 1, "wyckoff_sites": sites, "bond_constraints": [dict(base_bc)]}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
-
-    # d=2.0 > dmax=1.5 -> raw = w*(d-dmax)^2 = 2.0*0.5^2 = 0.5, /N(atom1)=1
-    assert compute_error(pv, cfg_raw) == pytest.approx(0.5, abs=1e-9)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "bond_constraints": [dict(base_bc)]}
 
     scale = (1.0 + 1.5) / 2.0   # 1.25
-    expected_norm = 2.0 * ((2.0 - 1.5) / scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-9)
+    expected = 2.0 * ((2.0 - 1.5) / scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-9)
 
 
-def test_angle_normalize_penalties_relative_error_matches_hand_calc():
+def test_angle_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, param_vector = _o_zn_h_h_param_vector()
     ac = {"atom_center": "O", "atom_neighbor": ["Zn", "H"],
           "angle_min": 80.0, "angle_max": 100.0,
           "angle_cutoff": 2.0, "weight": 1.0}
-    cfg_raw  = {"spacegroup": 1, "wyckoff_sites": sites, "angle_constraints": [dict(ac)]}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
-
-    # H1-O-H2 = 120 deg violates [80,100] by 20 deg (Zn-O-H* = 90 deg,
-    # both satisfied) -> raw = w*20^2 = 400 (matches the existing
-    # test_angle_exclude_neighbor_pairs_is_noop_when_absent baseline).
-    assert compute_error(param_vector, cfg_raw) == pytest.approx(400.0, abs=1e-3)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "angle_constraints": [dict(ac)]}
 
     scale = (80.0 + 100.0) / 2.0   # 90.0
-    expected_norm = ((120.0 - 100.0) / scale) ** 2
-    assert compute_error(param_vector, cfg_norm) == pytest.approx(expected_norm, abs=1e-3)
+    expected = ((120.0 - 100.0) / scale) ** 2
+    assert compute_error(param_vector, cfg) == pytest.approx(expected, abs=1e-3)
 
 
 def _center_with_neighbors_case(n_neighbors, d):
@@ -325,38 +316,31 @@ def _center_with_neighbors_case(n_neighbors, d):
     return sites, np.array(lattice + coords)
 
 
-def test_cn_normalize_penalties_relative_error_matches_hand_calc():
+def test_cn_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _center_with_neighbors_case(3, d=1.5)
     cc = {"center_atom": "C", "neighbor_atom": "Nb", "cn_min": 2, "cn_max": 2,
           "cutoff_distance": 2.0, "weight": 1.5}
-    cfg_raw  = {"spacegroup": 1, "wyckoff_sites": sites, "coordination_constraints": [dict(cc)]}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "coordination_constraints": [dict(cc)]}
 
     cn_i = _soft_coordination_number(np.array([1.5, 1.5, 1.5]), cutoff=2.0, width=0.10)
 
-    assert compute_error(pv, cfg_raw) == pytest.approx(1.5 * (cn_i - 2.0) ** 2, abs=1e-6)
-
     scale = 2.0   # _midpoint_scale(2, 2) == 2.0 (zero-width band)
-    expected_norm = 1.5 * ((cn_i - 2.0) / scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-6)
+    expected = 1.5 * ((cn_i - 2.0) / scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-6)
 
 
-def test_repulsion_normalize_penalties_relative_error_matches_hand_calc():
+def test_repulsion_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _two_atom_case("H", "Li", d=1.2)
     rc = {"atom1": "H", "atom2": "Li", "distance_min": 1.5, "weight": 2.0}
-    cfg_raw  = {"spacegroup": 1, "wyckoff_sites": sites, "repulsion_constraints": [dict(rc)]}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
-
-    # d=1.2 < dmin=1.5 -> raw = w*(dmin-d)^2 = 2.0*0.3^2 = 0.18
-    assert compute_error(pv, cfg_raw) == pytest.approx(0.18, abs=1e-9)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "repulsion_constraints": [dict(rc)]}
 
     scale = max(1.5, _SCALE_EPS)   # one-sided: dmin itself
-    expected_norm = 2.0 * ((1.5 - 1.2) / scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-9)
+    expected = 2.0 * ((1.5 - 1.2) / scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-9)
 
 
 def _single_atom_case(elem, a=10.0):
@@ -366,36 +350,28 @@ def _single_atom_case(elem, a=10.0):
     return sites, np.array([a, a, a, 90.0, 90.0, 90.0, 0.5, 0.5, 0.5])
 
 
-def test_charge_normalize_penalties_relative_error_matches_hand_calc():
+def test_charge_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _single_atom_case("Na")
-    cfg_raw  = {"spacegroup": 1, "wyckoff_sites": sites,
-                "ionic_charges": {"Na": 3.0}, "charge_balance_weight": 2.0}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
-
-    # tc = 3.0 (single Na atom, charge 3) -> raw = cw*tc^2 = 2.0*9.0 = 18.0
-    assert compute_error(pv, cfg_raw) == pytest.approx(18.0, abs=1e-9)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+           "ionic_charges": {"Na": 3.0}, "charge_balance_weight": 2.0}
 
     charge_scale = 3.0   # sum(abs(charges)) over the single Na atom
-    expected_norm = 2.0 * (3.0 / charge_scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-9)
+    expected = 2.0 * (3.0 / charge_scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-9)
 
 
-def test_volume_normalize_penalties_relative_error_matches_hand_calc():
+def test_volume_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _single_atom_case("Na", a=10.0)   # V_cell = 10^3 = 1000 A^3
-    cfg_raw = {"spacegroup": 1, "wyckoff_sites": sites,
-               "volume_constraint": {"volume_min": 200.0, "volume_max": 800.0, "weight": 3.0}}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
-
-    # V=1000 > V_max=800 -> raw = w*(V-Vmax)^2 = 3.0*200^2 = 120000.0
-    assert compute_error(pv, cfg_raw) == pytest.approx(120000.0, abs=1e-3)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+           "volume_constraint": {"volume_min": 200.0, "volume_max": 800.0, "weight": 3.0}}
 
     scale = (200.0 + 800.0) / 2.0   # 500.0
-    expected_norm = 3.0 * ((1000.0 - 800.0) / scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-3)
+    expected = 3.0 * ((1000.0 - 800.0) / scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -429,17 +405,14 @@ def test_aspect_ratio_penalises_excessive_anisotropy_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, _ = _single_atom_case("Na", a=10.0)
-    # ratio = 40/10 = 4.0, exceeds ratio_max=3.0 -> raw = w*(ratio-ratio_max)^2
+    # ratio = 40/10 = 4.0, exceeds ratio_max=3.0 by 1.0
     pv = np.array([10.0, 10.0, 40.0, 90.0, 90.0, 90.0, 0.5, 0.5, 0.5])
-    cfg_raw = {"spacegroup": 1, "wyckoff_sites": sites,
-               "aspect_ratio_constraint": {"ratio_max": 3.0, "weight": 5.0}}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
-
-    assert compute_error(pv, cfg_raw) == pytest.approx(5.0 * (4.0 - 3.0) ** 2, abs=1e-9)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+           "aspect_ratio_constraint": {"ratio_max": 3.0, "weight": 5.0}}
 
     scale = (1.0 + 3.0) / 2.0   # _midpoint_scale(1.0, 3.0) == 2.0
-    expected_norm = 5.0 * ((4.0 - 3.0) / scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-9)
+    expected = 5.0 * ((4.0 - 3.0) / scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-9)
 
 
 def test_aspect_ratio_absent_by_default():
@@ -519,17 +492,15 @@ def test_cell_validity_penalises_near_degenerate_angle_matches_hand_calc():
     # alpha=5 deg) brings Na inside its own 1.90 A contact distance and
     # the total error would no longer isolate the cell-validity term.
     sites, pv = _triclinic_atom_case(10.0, 10.0, 10.0, 30.0, 90.0, 90.0)
-    cfg_raw = {"spacegroup": 1, "wyckoff_sites": sites,
-               "cell_validity_constraint": {"g_min": 0.3, "weight": 5.0}}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+           "cell_validity_constraint": {"g_min": 0.3, "weight": 5.0}}
 
     ca, cb, cg = math.cos(math.radians(30.0)), math.cos(math.radians(90.0)), math.cos(math.radians(90.0))
     G = 1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg
-    assert compute_error(pv, cfg_raw) == pytest.approx(5.0 * (0.3 - G) ** 2, abs=1e-9)
 
     scale = (0.3 + 1.0) / 2.0   # _midpoint_scale(0.3, 1.0)
-    expected_norm = 5.0 * ((0.3 - G) / scale) ** 2
-    assert compute_error(pv, cfg_norm) == pytest.approx(expected_norm, abs=1e-9)
+    expected = 5.0 * ((0.3 - G) / scale) ** 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, abs=1e-9)
 
 
 def test_cell_validity_absent_by_default():
@@ -560,25 +531,68 @@ def test_cell_validity_trivially_satisfied_for_cubic_system():
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
 
-def test_hybrid_is_not_affected_by_normalize_penalties():
-    """Phase I-1 deliberately leaves hybridisation_constraints
-    unnormalised (no fixture ever exercised it with a nonzero value
-    before this phase, and its 'ang > 150 deg -> skip' branch is a
-    genuine discontinuity, not merely a raw-unit scale mismatch) --
-    confirm normalize_penalties has zero effect on it."""
+@pytest.mark.parametrize("entry", ["compute_error", "error_breakdown"])
+def test_removed_normalize_penalties_key_is_rejected(entry):
+    """ADR-0009: the key is refused, not silently ignored, so nobody can
+    believe `false` still selects the raw-unit objective."""
+    from mizuho.objective.breakdown import error_breakdown
     from mizuho.objective.energy import compute_error
-    from mizuho.structure import assignments_to_sites, resolve_fixed_assignment
 
-    sites = assignments_to_sites(resolve_fixed_assignment(
-        1, [{"element": "Si", "letter": "a"}, {"element": "O", "letter": "a"},
-            {"element": "O", "letter": "a"}]))
-    L = 20.0
-    c = 0.5
-    d = 1.6 / L
-    coords = [c, c, c, c + d, c, c, c - d, c, c]
-    pv = np.array([L, L, L, 90.0, 90.0, 90.0] + coords)
-    cfg_raw  = {"spacegroup": 1, "wyckoff_sites": sites,
-                "hybridisation_constraints": [{"element": "Si", "hybridisation": "sp3", "cutoff": 2.5}]}
-    cfg_norm = dict(cfg_raw, normalize_penalties=True)
+    fn = {"compute_error": compute_error, "error_breakdown": error_breakdown}[entry]
+    sites, pv = _single_atom_case("Na")
+    for value in (True, False):
+        cfg = {"spacegroup": 1, "wyckoff_sites": sites, "normalize_penalties": value}
+        with pytest.raises(ValueError, match="0009"):
+            fn(pv, cfg)
 
-    assert compute_error(pv, cfg_raw) == pytest.approx(compute_error(pv, cfg_norm), abs=1e-9)
+
+# ---------------------------------------------------------------------------
+# Integrality (ADR-0007, uniqueness plan phase D)
+# ---------------------------------------------------------------------------
+
+def _cn_config(center_charge, d, n=3, cn=(2, 3)):
+    sites, pv = _center_with_neighbors_case(n, d=d)
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+           "coordination_constraints": [
+               {"center_atom": "C", "neighbor_atom": "Nb", "cn_min": cn[0],
+                "cn_max": cn[1], "cutoff_distance": 2.0, "weight": 1.5}]}
+    if center_charge is not None:
+        # Only the sign matters here; the charge term is switched off.
+        cfg["ionic_charges"] = {"C": center_charge, "Nb": -center_charge}
+        cfg["charge_balance_weight"] = 0.0
+    return cfg, pv
+
+
+def test_integrality_penalises_a_half_integer_soft_count_inside_the_band():
+    """Three neighbours at 1.95 A (cutoff 2.0, width 0.1): each counts
+    expit(0.5) = 0.6225, soft CN 1.8674. Inside [1, 3] so the band term is
+    zero; 0.1326 from an integer, so integrality charges
+    w * ((0.1326 - 0.05) / scale)^2 with the parent's scale."""
+    from scipy.special import expit
+    from mizuho.objective.energy import compute_error
+    cfg, pv = _cn_config(+2, d=1.95, cn=(1, 3))
+    cn = 3 * expit(0.5)
+    dev = abs(cn - round(cn))
+    expected = 1.5 * ((dev - 0.05) / 2.0) ** 2        # scale = midpoint(1, 3) = 2
+    assert compute_error(pv, cfg) == pytest.approx(expected, rel=1e-9)
+
+
+def test_integrality_exempts_anion_centres():
+    from mizuho.objective.energy import compute_error
+    cfg, pv = _cn_config(-2, d=1.95, cn=(1, 3))
+    assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_integrality_is_silent_within_the_dead_band():
+    from mizuho.objective.energy import compute_error
+    cfg, pv = _cn_config(+2, d=1.5, cn=(1, 3))        # soft CN 2.98, dev 0.02
+    assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_breakdown_reports_the_integrality_share():
+    from mizuho.objective.breakdown import error_breakdown
+    from mizuho.objective.energy import compute_error
+    cfg, pv = _cn_config(+2, d=1.95, cn=(1, 3))
+    entry = error_breakdown(pv, cfg)["cn"][0]
+    assert entry["integrality_penalty"] == pytest.approx(compute_error(pv, cfg), rel=1e-9)
+    assert entry["integrality_max_dev"] == pytest.approx(0.1326, abs=1e-4)

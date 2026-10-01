@@ -1,0 +1,12 @@
+# CsCl, automatic space-group search. Expected detected group 221.
+composition: CsCl
+ionic_charges: {Cs: 1, Cl: -1}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+bond_constraints:
+  - {atom1: Cs, atom2: Cl, distance_min: 3.49, distance_max: 3.65, cutoff: 5.20, weight: 1.0}
+coordination_constraints:
+  - {center_atom: Cs, neighbor_atom: Cl, cn_min: 8, cn_max: 8, cutoff_distance: 5.20, weight: 1.5}
+  - {center_atom: Cl, neighbor_atom: Cs, cn_min: 8, cn_max: 8, cutoff_distance: 5.20, weight: 1.0}
+tree_search: {max_sites: 4, max_formula_units: 2}
+optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}

@@ -1,0 +1,23 @@
+{
+  "reference": "corundum_al2o3",
+  "found_under": "x4 global-minimum gate before uniqueness-plan phases A-G (2026-10-01, seed 42)",
+  "error_found": 2.2206043527560347e-17,
+  "error_published": 5.515086026038168e-08,
+  "param_vector": [
+    4.9931378719417365,
+    11.5,
+    0.32946157033293827,
+    0.8443766190151636
+  ],
+  "published_vector": [
+    4.7606,
+    12.994,
+    0.30635,
+    0.6478299999996664
+  ],
+  "spacegroup": 167,
+  "lattice_deviation_percent": {
+    "a": 4.884633700410376,
+    "c": -11.497614283515468
+  }
+}

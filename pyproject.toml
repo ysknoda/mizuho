@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mizuho"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "Automatic crystal structure prediction from composition, bonding, and space-group/Wyckoff-position constraints"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,13 +38,15 @@ dependencies = [
     "scipy>=1.10",
     "PyYAML>=6.0",
     "cma>=3.3",
+    # Symmetry detection is part of a search's verdict, not an
+    # accelerator: docs/adr/0010-success-is-the-detected-symmetry.md.
+    "spglib>=2.0",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "spglib>=2.0",
 ]
 # optimization.backend = "tpe" (Optuna TPESampler -- see
 # optimize/optuna_backend.py).
@@ -101,4 +103,5 @@ include = ["mizuho", "mizuho.*"]
 testpaths = ["tests"]
 markers = [
     "slow: end-to-end tests that run a real (small-budget) search/optimisation pipeline",
+    "gate: search gates of ADR-0005, minutes to hours per mineral; skipped unless --run-gates",
 ]
