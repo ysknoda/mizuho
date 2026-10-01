@@ -25,5 +25,14 @@ coordination_constraints:
   - {center_atom: S, neighbor_atom: X, cn_min: 3, cn_max: 3, cutoff_distance: 2.856, weight: 1.0}
   - {center_atom: S, neighbor_atom: S, cn_min: 1, cn_max: 1, cutoff_distance: 2.620, weight: 1.0}
 auto_coupling_cutoff: 2.856
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
+# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
+# reference, so it is replaced by the measured deviation rounded outward
+# (ADR-0004's amendment): Fe 2.530.
+# Pyrite's Fe is 2.53 v.u. off: Table 3's Fe-S R0 (2.16 A) carries no oxidation
+# state and does not fit low-spin Fe(II) in a persulfide. The term is inert here.
+bond_valence:
+  tolerance: {Fe: 2.54}
+
 tree_search: {max_sites: 4, max_formula_units: 4}
 optimization: {n_restarts: 6, cma_maxiter: 250, refine_maxiter: 300, seed: 42}

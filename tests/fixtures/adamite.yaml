@@ -127,6 +127,14 @@ auto_coupling_cutoff: 2.647
 # phase I-3.
 volume_constraint: {}
 
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
+# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
+# reference, so it is replaced by the measured deviation rounded outward
+# (ADR-0004's amendment): Zn 0.593.
+# Zn's 0.593 is the 1937 refinement's own spread (see the Zn-O band).
+bond_valence:
+  tolerance: {Zn: 0.6}
+
 tree_search:
   max_sites: 9
   max_formula_units: 4

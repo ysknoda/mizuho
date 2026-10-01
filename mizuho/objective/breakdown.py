@@ -13,6 +13,7 @@ from ..lattice import (
 )
 from ..structure import build_structure
 from .energy import compute_error
+from .bond_valence import bond_valence_term
 from .penalties import (
     GRAY_BAND_WIDTHS, _gray_band_penalty, _integrality_applies, _integrality_penalty,
     reject_removed_keys,
@@ -435,6 +436,10 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
     chg_err   = float(cw * (tc / charge_scale) ** 2)
     result["charge"] = chg_err
 
+    # 6b. Bond-valence sums: cations in the total, anions report only.
+    result["bond_valence"] = bond_valence_term(frac, lat, species, config)
+    bv_err = result["bond_valence"]["penalty"]
+
     # 7. Volume constraint
     vc = config.get("volume_constraint")
     if vc is not None:
@@ -514,6 +519,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
                       + sum(c["penalty"] for c in result["cn"])
                       + sum(r["penalty"] for r in result["repulsion"])
                       + chg_err
+                      + bv_err
                       # Without this, total_full (compute_error, which
                       # always includes E_vol/E_ar/E_cv) exceeds
                       # sub_total by those terms' own penalty even when
@@ -534,6 +540,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         + sum(c["penalty"] for c in result["cn"])
         + sum(r["penalty"] for r in result["repulsion"])
         + chg_err
+        + bv_err
         + (result["volume"]["penalty"] if result["volume"] else 0.0)
         + ar_err
         + cv_err
@@ -665,6 +672,18 @@ def print_error_breakdown(bd: dict) -> None:
 
     # 6. Charge balance
     _row("Charge balance", "", bd["charge"])
+
+    # 6b. Bond valence (cations in the total; anions report only)
+    bv = bd.get("bond_valence", {})
+    for el, c in bv.get("cations", {}).items():
+        detail = (f"BVS={min(c['bvs']):.3f}..{max(c['bvs']):.3f}  V={c['valence']:g}  "
+                  f"tol={c['tolerance']:g}")
+        _row("Bond valence", el, c["penalty"], detail=detail)
+    for el, a in bv.get("anions", {}).items():
+        print(f"  {'Bond valence':<18} {el + ' [report only]':<28} {'-':>10}  "
+              f"BVS={min(a['bvs']):.3f}..{max(a['bvs']):.3f}  |V|={a['valence']:g}")
+    if bv.get("skipped"):
+        print(f"  {'Bond valence':<18} {'no R0: ' + ', '.join(bv['skipped']):<28}")
 
     # 7. Volume constraint
     v = bd.get("volume")

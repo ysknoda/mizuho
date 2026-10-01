@@ -125,6 +125,13 @@ volume_constraint: {}
 aspect_ratio_constraint: {}
 cell_validity_constraint: {}
 
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
+# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
+# reference, so it is replaced by the measured deviation rounded outward
+# (ADR-0004's amendment): Mg 0.137.
+bond_valence:
+  tolerance: {Mg: 0.14}
+
 tree_search:
   max_sites: 9
   max_formula_units: 4

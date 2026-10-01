@@ -71,15 +71,6 @@ class Reference:
                    source, bonds, atom_counts)
 
 
-_SOFT_TAIL = ("pyrite S(S): the ADR-0004 midpoint cutoff (2.620 A) leaves six second-shell S at 3.078 A each " \
-         "adding expit(-4.58) = 0.010, so soft CN is ~1.05 at integer CN 1. Recorded, not tuned")
-
-
-def _with_xfail(names, xfail):
-    return [pytest.param(n, marks=pytest.mark.xfail(reason=xfail[n], strict=True))
-            if n in xfail else n for n in names]
-
-
 _REFS = {
     # Fd-3m, a = 8.083 A. Origin choice 1, which is what mizuho's SG227
     # table uses: the 32e parameter comes out at 0.3870, i.e. the
@@ -224,7 +215,7 @@ def test_reference_structure_reproduces_published_bond_lengths(name):
         assert d[cn] - d[cn - 1] > 0.5
 
 
-@pytest.mark.parametrize("name", _with_xfail(sorted(_REFS), {"pyrite_fes2": _SOFT_TAIL}))
+@pytest.mark.parametrize("name", sorted(_REFS))
 def test_every_coordination_term_reports_the_cited_number(name):
     """The core of the gate. A coordination target is a cited chemical
     fact (ADR-0004), so the objective must reproduce it here."""
@@ -253,7 +244,7 @@ def test_every_coordination_term_reports_the_cited_number(name):
     ("wollastonite_casio3", 1e-3),
     ("fluorite_caf2", 1e-3),
     ("sphalerite_zns", 1e-3),
-    pytest.param("pyrite_fes2", 1e-3, marks=pytest.mark.xfail(reason=_SOFT_TAIL, strict=True)),
+    ("pyrite_fes2", 1e-3),
     # Adamite's reference is a 1937 refinement whose As-O distances span
     # 1.588-1.814 A, wider than the cited 1.60-1.75 A band, leaving ~0.03.
     # Recorded rather than tuned away (ADR-0004).
@@ -286,16 +277,10 @@ IMPOSTORS = sorted(Path(FIXTURES, "impostors").glob("*.json"))
 
 # Written at the correct threshold and xfail-ed, never relaxed (ADR-0005).
 IMPOSTOR_XFAIL = {
-    "forsterite_mg2sio4_round2": "found AFTER phases A-G: error 8.1e-7 below the "
-                                 "published 7.8e-6 at a -7.9% / +5.2%",
+    "anatase_tio2_round3_bvs": "zero error at a +2.6% / c +4.0% with bond valence on",
+    "corundum_al2o3_round3_bvs": "zero error at a +4.7% / c -8.8% with bond valence on",
+    "quartz_sio2_round3_bvs": "zero error at c +6.5% with bond valence on",
     "anatase_tio2_round2_seedfix": "every term zero at +3.6% / -1.6%",
-    "corundum_al2o3_round2_seedfix": "every term zero at c +6.6%; same polyhedral "
-                                      "connectivity as the published structure",
-    "diopside_camgsi2o6_round2_seedfix": "4e-11 at b +5.6%; SiO4 edge-sharing; only "
-                                         "the anion-centred gray band (report only) sees it",
-    "adamite_round2_seedfix": "4e-14 at +5.1/+5.8/+7.3%; only the anion-centred "
-                              "gray band (report only) sees it",
-    "forsterite_mg2sio4_round2_seedfix": "1.2e-6 below the published 7.8e-6 at b -9.7%",
     "anatase_tio2": "Ti-O 1.954/2.005 A and O-Ti-O angles all inside their "
                     "bands: bond (2%) and angle (5 deg rounding) slack compound "
                     "into a +4.9% / -2.8% lattice with every term at zero",

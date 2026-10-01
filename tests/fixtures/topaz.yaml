@@ -132,6 +132,13 @@ auto_coupling_cutoff: {O: 2.566, F: 2.445}
 # not alternatives.
 volume_constraint: {}
 
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
+# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
+# reference, so it is replaced by the measured deviation rounded outward
+# (ADR-0004's amendment): Si 0.167.
+bond_valence:
+  tolerance: {Si: 0.17}
+
 tree_search:
   max_sites: 9
   max_formula_units: 4

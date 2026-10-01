@@ -251,6 +251,23 @@ Every penalty term divides its deviation by a natural physical scale for that te
 
 Normalisation is always on. The former `normalize_penalties` key was removed and a config that still sets it is rejected with an error ([ADR-0009](docs/adr/0009-always-normalise-penalties.md)): the gates had been scoring the raw objective while every search optimised the normalised one.
 
+### Bond-valence sums
+
+When `ionic_charges` and `bond_constraints` are given, each cation's bond-valence sum
+(Brese & O'Keeffe 1991 R0, b = 0.37 A; `mizuho/data/bond_valence.py`, all 966 tabulated
+pairs) is held to its formal valence within 0.1 valence units. Bonds are the pairs of each
+bond constraint within its `cutoff`. Anion sums are reported, not added. Override per
+element only where a reference structure itself exceeds 0.1, and say so beside the value:
+
+```yaml
+bond_valence:
+  weight: 1.0              # default
+  tolerance: {Ti: 0.28}    # measured at the reference (default 0.1)
+```
+
+`bond_valence: false` switches the term off. See
+[ADR-0016](docs/adr/0016-bond-valence-sums.md).
+
 ### JAX-accelerated Stage 2 gradient (measured: not recommended)
 
 Setting `optimization.refine_jac: true` supplies Stage 2's local refinement with an exact analytic gradient for the coordination-number and volume penalty terms (via [JAX](https://github.com/google/jax) autodiff), combined with scipy's usual finite-difference gradient for every other term. Requires the optional `jax` extra (`pip install mizuho[jax]`); raises a clear `ImportError` otherwise. Not supported together with `hybridisation_constraints` (raises `ValueError`) since that term's hard neighbour cutoff and discontinuous `ang > 150 deg` branch have not been validated for JAX differentiation.

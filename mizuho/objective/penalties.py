@@ -8,7 +8,6 @@ import logging
 from typing import Dict, List
 
 import numpy as np
-from scipy.special import expit
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +58,8 @@ def _integrality_penalty(cn: float, w: float, scale: float) -> float:
 
 
 # Half-width of the gray band around a coordination cutoff, in smoothing
-# widths: inside it the logistic soft count is neither ~0 nor ~1
-# (expit(3) = 0.95), so an atom there is half-counted.
+# widths: the soft count's support. Inside it an atom counts fractionally;
+# outside it exactly 0 or 1 (_smootherstep_weight).
 GRAY_BAND_WIDTHS = 3.0
 
 
@@ -92,32 +91,44 @@ def _midpoint_scale(vmin, vmax, eps: float = _SCALE_EPS) -> float:
     return max((vmin + vmax) / 2.0, eps)
 
 
+def _smootherstep_weight(distances: np.ndarray, cutoff: float, width: float) -> np.ndarray:
+    """Per-neighbour weight of the soft coordination count: exactly 1
+    inside cutoff - 3*width, exactly 0 beyond cutoff + 3*width, 0.5 at the
+    cutoff, and Perlin's quintic smootherstep 6t^5 - 15t^4 + 10t^3 in
+    between (continuous to the second derivative at both band edges).
+
+    Replaces the logistic expit((cutoff - d) / width), whose tails never
+    vanish: pyrite's six second-shell S at 3.078 A each added 0.010 to
+    an S(S) count whose cutoff sits at the measured mid-gap 2.620 A, so
+    the published structure scored soft CN ~1.05 at integer CN 1. With
+    compact support the soft count EQUALS the integer count whenever the
+    gray band is empty (docs/adr/0015-compact-soft-coordination-count.md)."""
+    half = GRAY_BAND_WIDTHS * width
+    t = np.clip((cutoff + half - distances) / (2.0 * half), 0.0, 1.0)
+    return t * t * t * (t * (6.0 * t - 15.0) + 10.0)
+
+
 def _soft_coordination_number(distances: np.ndarray, cutoff: float,
                                width: float = 0.10) -> float:
     """
     Smooth ("soft") coordination number: each neighbour distance
-    contributes a logistic weight expit((cutoff - d) / width) in (0, 1)
-    instead of a hard 0/1 indicator, so the count -- and any _penalty
-    built on it -- varies continuously with atomic positions.
+    contributes _smootherstep_weight in [0, 1] instead of a hard 0/1
+    indicator, so the count -- and any _penalty built on it -- varies
+    continuously with atomic positions inside the gray band
+    [cutoff - 3*width, cutoff + 3*width].
 
     A hard `sum(d < cutoff)` count is piecewise constant: its penalty
-    gradient is exactly zero everywhere except the measure-zero instant
-    a neighbour crosses the cutoff. That leaves gradient-based
-    refinement (L-BFGS-B) with no usable signal at all, and CMA-ES with
-    no "closer is better" slope in its fitness landscape, until a
-    neighbour happens to cross the threshold by chance -- so a structure
-    with one neighbour sitting just outside the cutoff scores exactly as
-    "coordination-deficient" as one with no nearby neighbours at all.
+    gradient is exactly zero everywhere except the instant a neighbour
+    crosses the cutoff. The band gives refinement a slope there; outside
+    it the count is exactly the integer count, which is the point.
 
-    `width` sets the transition scale: a neighbour exactly at `cutoff`
-    counts as 0.5; by `cutoff +/- 3*width` it is within ~5% of 1 or 0.
     `distances` may contain non-finite entries (e.g. a self-pair marked
     np.inf by the caller); these contribute 0.
     """
     finite = np.isfinite(distances)
     if not np.any(finite):
         return 0.0
-    return float(np.sum(expit((cutoff - distances[finite]) / width)))
+    return float(np.sum(_smootherstep_weight(distances[finite], cutoff, width)))
 
 
 def _expand_wildcard(element, all_species: set, center: str,

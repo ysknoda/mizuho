@@ -13,6 +13,7 @@ from ..lattice import (
     pairwise_distances_pbc, self_image_distances,
 )
 from ..structure import build_structure
+from .bond_valence import bond_valence_term
 from .penalties import (
     _gray_band_penalty, _integrality_applies, _integrality_penalty, reject_removed_keys,
     _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
@@ -332,18 +333,12 @@ def compute_error(param_vector: np.ndarray, config: dict,
     #   Normalisation: penalty sum divided by N(center_atom).
     #
     #   SOFT count (not a hard threshold): each neighbour contributes a
-    #   logistic weight expit((cutoff - d) / width) in (0, 1) instead of
-    #   a 0/1 indicator, so CN varies continuously with atomic positions.
-    #   A hard `sum(d < cutoff)` count is *piecewise constant* -- its
-    #   penalty gradient is exactly zero everywhere except the measure-
-    #   zero instant a neighbour crosses the cutoff, so a neighbour
-    #   sitting just outside the cutoff gives the optimiser (CMA-ES's
-    #   fitness landscape, and L-BFGS-B's finite-difference gradient
-    #   alike) no signal whatsoever that moving it closer would help --
-    #   it looks exactly as bad as being infinitely far away, right up
-    #   until it snaps across the threshold. `width` (default 0.10 A)
-    #   sets the transition scale: at d = cutoff the neighbour counts as
-    #   exactly 0.5; by d = cutoff +/- 3*width it is within ~5% of 1 or 0.
+    #   quintic smootherstep weight that is exactly 1 inside cutoff -
+    #   3*width, exactly 0 beyond cutoff + 3*width and 0.5 at the cutoff
+    #   (penalties._smootherstep_weight, ADR-0015). Inside that gray band
+    #   the count varies continuously, giving refinement a slope where a
+    #   neighbour crosses the cutoff; outside it the count equals the
+    #   integer count exactly.
     # ------------------------------------------------------------------
     for cc in config.get("coordination_constraints", []):
         ce       = cc["center_atom"]
@@ -471,6 +466,15 @@ def compute_error(param_vector: np.ndarray, config: dict,
         total += err
         if verbose and err > 0.001:
             log.append(f"  Charge total={tc:.2f}, P={err:.4f}")
+
+    # ------------------------------------------------------------------
+    # 6b. Bond-valence sums at cation centres (objective/bond_valence.py;
+    #     anion centres are reported by breakdown.py only).
+    # ------------------------------------------------------------------
+    bv_err = bond_valence_term(frac, lat, species, config)["penalty"]
+    total += bv_err
+    if verbose and bv_err > 0.001:
+        log.append(f"  Bond valence P={bv_err:.4f}")
 
     # ------------------------------------------------------------------
     # 7. Volume constraint  (two-sided penalty on unit-cell volume)

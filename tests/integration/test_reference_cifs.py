@@ -175,3 +175,27 @@ def test_quartz_and_its_inversion_score_identically():
     d152 = np.sort(_first_shell(m152, "Si", 4))
     d154 = np.sort(_first_shell(m154, "Si", 4))
     np.testing.assert_allclose(d152, d154, atol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Second refinements (ADR-0007's tautology check; design review Q6): the
+# fixture's constraints were measured on one refinement; here they score an
+# independent one. Recorded, not judged: the value says how tight the
+# bands are against refinement-to-refinement differences. Measured
+# 2026-10-01: corundum_R 0.000000, anatase_origin1 0.000019 (Ti-O band),
+# forsterite_Pnma 0.000011 (O-Mg-O band).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("fixture,second", [
+    ("corundum_al2o3", "corundum_R.cif"),
+    ("anatase_tio2", "anatase_origin1.cif"),
+    ("forsterite_mg2sio4", "forsterite_Pnma.cif"),
+])
+def test_second_refinement_is_scored_and_recorded(fixture, second, record_property):
+    from mizuho.objective.breakdown import error_breakdown
+    m = cif_to_mizuho(f"{REF}/{second}")
+    cfg = build_sg_config(yaml.safe_load(open(f"tests/fixtures/{fixture}.yaml")), m.spacegroup)
+    cfg["wyckoff_sites"] = m.config()["wyckoff_sites"]
+    total = error_breakdown(m.param_vector, cfg)["total"]
+    record_property("objective_at_second_refinement", total)
+    assert np.isfinite(total)

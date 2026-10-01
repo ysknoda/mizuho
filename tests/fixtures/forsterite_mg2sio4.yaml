@@ -97,6 +97,13 @@ coordination_constraints:
 # O(X) coordination constraint: the same measured O cutoff (ADR-0004).
 auto_coupling_cutoff: 2.675
 
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
+# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
+# reference, so it is replaced by the measured deviation rounded outward
+# (ADR-0004's amendment): Mg 0.119, Si 0.120.
+bond_valence:
+  tolerance: {Mg: 0.12, Si: 0.13}
+
 tree_search:
   max_sites: 7
   max_formula_units: 4

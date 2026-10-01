@@ -365,7 +365,10 @@ def make_gradient_fn(config, reference_param_vector):
             raw_cn = jnp.asarray(0.0)
             for li in range(len(ci_arr)):
                 row = dm[li]
-                weights = jax.scipy.special.expit((cutoff - row) / width)
+                # Mirrors penalties._smootherstep_weight (ADR-0015).
+                t = jnp.clip((cutoff + GRAY_BAND_WIDTHS * width - row)
+                             / (2.0 * GRAY_BAND_WIDTHS * width), 0.0, 1.0)
+                weights = t * t * t * (t * (6.0 * t - 15.0) + 10.0)
                 weights = jnp.where(jnp.asarray(identity[li]), 0.0, weights)
                 cn_i = jnp.sum(weights)
                 raw_cn = raw_cn + _penalty_jax(cn_i, cnmin, cnmax, w, scale)

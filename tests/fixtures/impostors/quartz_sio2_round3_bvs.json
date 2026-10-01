@@ -1,0 +1,27 @@
+{
+  "reference": "quartz_sio2",
+  "found_under": "x4 global-minimum gate with ADR-0015 and the bond-valence term (2026-10-01, seed 42)",
+  "error_found": 0.0,
+  "error_published": 0.0,
+  "param_vector": [
+    4.931447481374962,
+    5.75644397927209,
+    0.521230843950972,
+    0.16579252631225042,
+    0.7519499588505745,
+    0.47635592550552774
+  ],
+  "published_vector": [
+    4.913,
+    5.404,
+    0.535000000000001,
+    0.41700000000000004,
+    0.278,
+    0.22199999999999998
+  ],
+  "spacegroup": 152,
+  "lattice_deviation_percent": {
+    "a": 0.3754830322605603,
+    "c": 6.521909312955036
+  }
+}

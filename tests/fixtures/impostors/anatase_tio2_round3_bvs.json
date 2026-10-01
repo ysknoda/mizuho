@@ -1,0 +1,21 @@
+{
+  "reference": "anatase_tio2",
+  "found_under": "x4 global-minimum gate with ADR-0015 and the bond-valence term (2026-10-01, seed 42)",
+  "error_found": 0.0,
+  "error_published": 0.0,
+  "param_vector": [
+    3.868283698830984,
+    9.805864864667926,
+    0.6977253347689032
+  ],
+  "published_vector": [
+    3.771,
+    9.43,
+    0.29059999999999997
+  ],
+  "spacegroup": 141,
+  "lattice_deviation_percent": {
+    "a": 2.5797851718638083,
+    "c": 3.985841618959985
+  }
+}

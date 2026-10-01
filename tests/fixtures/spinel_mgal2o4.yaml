@@ -107,6 +107,13 @@ volume_constraint:
   volume_min: 400.0
   volume_max: 700.0
 
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
+# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
+# reference, so it is replaced by the measured deviation rounded outward
+# (ADR-0004's amendment): Al 0.167, Mg 0.177.
+bond_valence:
+  tolerance: {Al: 0.17, Mg: 0.18}
+
 tree_search:
   # SG227's smallest available multiplicities are 8/16/32 (Z=8 for the
   # conventional cell), so the minimal valid combination (one Mg site +

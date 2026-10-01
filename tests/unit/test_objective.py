@@ -563,18 +563,35 @@ def _cn_config(center_charge, d, n=3, cn=(2, 3)):
     return cfg, pv
 
 
-def test_integrality_penalises_a_half_integer_soft_count_inside_the_band():
-    """Three neighbours at 1.69 A (cutoff 2.0, width 0.1), just outside the
-    gray band [1.7, 2.3]: each counts expit(3.1) = 0.9569, soft CN 2.8707.
-    Inside [1, 3] so the band term is zero; 0.1293 from an integer, so
-    integrality charges w * ((0.1293 - 0.05) / scale)^2."""
-    from scipy.special import expit
+def _smootherstep(t):
+    return 6 * t**5 - 15 * t**4 + 10 * t**3
+
+
+def test_soft_count_is_exactly_integral_outside_the_gray_band():
+    """ADR-0015: three neighbours at 1.69 A, just inside the band's inner
+    edge (cutoff 2.0, width 0.1 -> band [1.7, 2.3]), count exactly 3; so
+    neither integrality nor the band term charges anything."""
     from mizuho.objective.energy import compute_error
+    from mizuho.objective.penalties import _soft_coordination_number
+    assert _soft_coordination_number(np.array([1.69, 1.69, 1.69, 2.31]), 2.0, 0.1) == 3.0
     cfg, pv = _cn_config(+2, d=1.69, cn=(1, 3))
-    cn = 3 * expit(3.1)
+    assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-15)
+
+
+def test_integrality_penalises_a_half_integer_soft_count_inside_the_band():
+    """Three neighbours at 1.90 A sit inside the gray band: each weighs
+    smootherstep((2.3 - 1.90) / 0.6) = smootherstep(2/3) = 0.7901, soft
+    CN 2.3704, 0.3704 from an integer. Inside [1, 3] so the CN band term
+    is zero; integrality charges w*((0.3704 - 0.05)/2)^2 and the gray band
+    3 * w*((0.3 - 0.10)/2.0)^2, both in the parent's weight and scale."""
+    from mizuho.objective.energy import compute_error
+    cfg, pv = _cn_config(+2, d=1.90, cn=(1, 3))
+    cn = 3 * _smootherstep((2.3 - 1.90) / 0.6)
+    assert cn == pytest.approx(2.3704, abs=1e-4)
     dev = abs(cn - round(cn))
-    expected = 1.5 * ((dev - 0.05) / 2.0) ** 2        # scale = midpoint(1, 3) = 2
-    assert compute_error(pv, cfg) == pytest.approx(expected, rel=1e-9)
+    integrality = 1.5 * ((dev - 0.05) / 2.0) ** 2           # scale = midpoint(1, 3)
+    gray = 3 * 1.5 * ((0.3 - 0.10) / 2.0) ** 2              # scale = cutoff
+    assert compute_error(pv, cfg) == pytest.approx(integrality + gray, rel=1e-9)
 
 
 def test_integrality_exempts_anion_centres():
@@ -592,11 +609,13 @@ def test_integrality_is_silent_within_the_dead_band():
 def test_breakdown_reports_the_integrality_share():
     from mizuho.objective.breakdown import error_breakdown
     from mizuho.objective.energy import compute_error
-    cfg, pv = _cn_config(+2, d=1.69, cn=(1, 3))
+    cfg, pv = _cn_config(+2, d=1.90, cn=(1, 3))
     entry = error_breakdown(pv, cfg)["cn"][0]
-    assert entry["integrality_penalty"] == pytest.approx(compute_error(pv, cfg), rel=1e-9)
-    assert entry["integrality_max_dev"] == pytest.approx(0.1293, abs=1e-4)
-    assert entry["gray_band_penalty"] == 0.0
+    assert entry["integrality_penalty"] > 0
+    assert entry["integrality_penalty"] + entry["gray_band_penalty"] == pytest.approx(
+        compute_error(pv, cfg), rel=1e-9)
+    cn = 3 * _smootherstep((2.3 - 1.90) / 0.6)
+    assert entry["integrality_max_dev"] == pytest.approx(abs(cn - round(cn)), abs=1e-12)
 
 
 def test_gray_band_matches_hand_calc_and_reports_anions_separately():
