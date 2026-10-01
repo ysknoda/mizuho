@@ -130,8 +130,13 @@ auto_coupling_cutoff: {O: 2.566, F: 2.445}
 # since it is harmless and does help on other fixtures (e.g. adamite),
 # and volume + a future shape-aware term are meant to be complementary,
 # not alternatives.
-volume_constraint: {}
-
+# Cell volume from the measured density, D(meas.) = 3.49–3.57 g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/topaz.pdf): V = Z M / (rho N_A) with Z = 4, M(Al2SiO4F2) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 342.41
+  volume_max: 350.27
 # Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
 # 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
 # reference, so it is replaced by the measured deviation rounded outward

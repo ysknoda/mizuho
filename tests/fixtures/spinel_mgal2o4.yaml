@@ -103,6 +103,10 @@ auto_coupling_cutoff: 2.630
 # (only a loose safety net against gross runaway is needed here, since
 # spinel's own low dimensionality already made it robust to wide
 # lattice_bounds even before volume_constraint existed).
+# Not replaced by a measured density (design review 2026-10-01): the Handbook of
+# Mineralogy's D(meas.) = 3.6-4.1 g/cm^3 is for natural spinel and rises with Fe and Zn;
+# pure MgAl2O4 lies below it (its own reference cell, 528.1 A^3, is outside the band
+# [460.95, 524.97] A^3 that range gives). Excluded and recorded rather than bent.
 volume_constraint:
   volume_min: 400.0
   volume_max: 700.0

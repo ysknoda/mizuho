@@ -1,0 +1,27 @@
+{
+  "reference": "quartz_sio2",
+  "found_under": "x4 global-minimum gate with ADR-0015/0016 and density-derived volume bands (2026-10-01, seed 42)",
+  "error_found": 0.0,
+  "error_published": 0.0,
+  "param_vector": [
+    4.852079188340028,
+    5.601751637073997,
+    0.4614089818266138,
+    0.2864225946036756,
+    0.8704122044822941,
+    0.547989927277007
+  ],
+  "published_vector": [
+    4.913,
+    5.404,
+    0.535000000000001,
+    0.41700000000000004,
+    0.278,
+    0.22199999999999998
+  ],
+  "spacegroup": 152,
+  "lattice_deviation_percent": {
+    "a": -1.2399920956640023,
+    "c": 3.659356718615791
+  }
+}

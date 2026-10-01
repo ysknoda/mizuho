@@ -277,13 +277,12 @@ IMPOSTORS = sorted(Path(FIXTURES, "impostors").glob("*.json"))
 
 # Written at the correct threshold and xfail-ed, never relaxed (ADR-0005).
 IMPOSTOR_XFAIL = {
-    "anatase_tio2_round3_bvs": "zero error at a +2.6% / c +4.0% with bond valence on",
-    "corundum_al2o3_round3_bvs": "zero error at a +4.7% / c -8.8% with bond valence on",
-    "quartz_sio2_round3_bvs": "zero error at c +6.5% with bond valence on",
-    "anatase_tio2_round2_seedfix": "every term zero at +3.6% / -1.6%",
-    "anatase_tio2": "Ti-O 1.954/2.005 A and O-Ti-O angles all inside their "
-                    "bands: bond (2%) and angle (5 deg rounding) slack compound "
-                    "into a +4.9% / -2.8% lattice with every term at zero",
+    "corundum_al2o3_round4_volume": "zero error at c +11.6% on a bound, volume -0.2%",
+    "forsterite_mg2sio4_round4_volume": "zero error at a +9.9 / b -5.4 / c -3.8%, volume +0.0%",
+    "quartz_sio2_round4_volume": "zero error at a -1.2 / c +3.7%, volume +1.1%",
+    "corundum_al2o3_round3_bvs": "zero error at a +4.7% / c -8.8% with bond valence on, at "
+                                 "the published volume (+0.0%): a shape change no first-shell "
+                                 "term, bond valence or density can see (design review Q2 d)",
 }
 
 

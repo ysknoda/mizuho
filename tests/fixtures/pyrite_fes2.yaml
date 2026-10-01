@@ -34,5 +34,13 @@ auto_coupling_cutoff: 2.856
 bond_valence:
   tolerance: {Fe: 2.54}
 
+# Cell volume from the measured density, D(meas.) = 5.018, +-2% g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/pyrite.pdf): V = Z M / (rho N_A) with Z = 4, M(FeS2) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 155.67
+  volume_max: 162.04
+
 tree_search: {max_sites: 4, max_formula_units: 4}
 optimization: {n_restarts: 6, cma_maxiter: 250, refine_maxiter: 300, seed: 42}

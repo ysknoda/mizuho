@@ -1,0 +1,23 @@
+{
+  "reference": "corundum_al2o3",
+  "found_under": "x4 global-minimum gate with ADR-0015/0016 and density-derived volume bands (2026-10-01, seed 42)",
+  "error_found": 0.0,
+  "error_published": 0.0,
+  "param_vector": [
+    4.502379486029693,
+    14.500000000001,
+    0.2893767215590777,
+    0.8403773227049257
+  ],
+  "published_vector": [
+    4.7606,
+    12.994,
+    0.30635,
+    0.6478299999996664
+  ],
+  "spacegroup": 167,
+  "lattice_deviation_percent": {
+    "a": -5.424117001434837,
+    "c": 11.589964599053413
+  }
+}

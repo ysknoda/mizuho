@@ -104,6 +104,14 @@ auto_coupling_cutoff: 2.675
 bond_valence:
   tolerance: {Mg: 0.12, Si: 0.13}
 
+# Cell volume from the measured density, D(meas.) = 3.275, +-2% g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/forsterite.pdf): V = Z M / (rho N_A) with Z = 4, M(Mg2SiO4) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 279.74
+  volume_max: 291.17
+
 tree_search:
   max_sites: 7
   max_formula_units: 4

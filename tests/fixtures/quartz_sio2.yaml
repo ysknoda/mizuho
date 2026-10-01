@@ -59,6 +59,14 @@ coordination_constraints:
 # O(X) coordination constraint: the same measured O cutoff (ADR-0004).
 auto_coupling_cutoff: 2.556
 
+# Cell volume from the measured density, D(meas.) = 2.65 (2.59–2.63 when massive; the crystal value is used), +-2% g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/quartz.pdf): V = Z M / (rho N_A) with Z = 3, M(SiO2) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 110.73
+  volume_max: 115.26
+
 tree_search:
   max_sites: 4
   max_formula_units: 3

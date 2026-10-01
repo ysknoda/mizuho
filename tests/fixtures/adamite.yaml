@@ -125,8 +125,13 @@ auto_coupling_cutoff: 2.647
 # pinning). Impact on this fixture's own (already tight) lattice_bounds
 # verified separately -- see the mizuho-py-wychoff-position plan's
 # phase I-3.
-volume_constraint: {}
-
+# Cell volume from the measured density, D(meas.) = 4.32–4.48 g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/adamite.pdf): V = Z M / (rho N_A) with Z = 4, M(Zn2AsO5H) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 425.04
+  volume_max: 440.79
 # Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
 # 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
 # reference, so it is replaced by the measured deviation rounded outward

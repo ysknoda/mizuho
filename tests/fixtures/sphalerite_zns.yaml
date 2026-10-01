@@ -20,5 +20,13 @@ coordination_constraints:
   - {center_atom: Zn, neighbor_atom: S, cn_min: 4, cn_max: 4, cutoff_distance: 3.417, weight: 1.5}
   - {center_atom: S, neighbor_atom: X, cn_min: 4, cn_max: 4, cutoff_distance: 3.417, weight: 1.0}
 auto_coupling_cutoff: 3.417
+# Cell volume from the measured density, D(meas.) = 3.9–4.1 g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/sphalerite.pdf): V = Z M / (rho N_A) with Z = 4, M(ZnS) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 157.85
+  volume_max: 165.96
+
 tree_search: {max_sites: 4, max_formula_units: 4}
 optimization: {n_restarts: 6, cma_maxiter: 250, refine_maxiter: 300, seed: 42}

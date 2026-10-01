@@ -121,7 +121,13 @@ auto_coupling_cutoff: 2.942
 # aspect_ratio_constraint are (a persistent, always-on safety net) and
 # to cross-check the term's implementation on a second, independent
 # monoclinic/triclinic fixture.
-volume_constraint: {}
+# Cell volume from the measured density, D(meas.) = 3.22–3.38 g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/diopside.pdf): V = Z M / (rho N_A) with Z = 4, M(CaMgSi2O6) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 425.54
+  volume_max: 446.69
 aspect_ratio_constraint: {}
 cell_validity_constraint: {}
 

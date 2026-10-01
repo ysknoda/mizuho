@@ -60,6 +60,14 @@ coordination_constraints:
 # O(X) coordination constraint: the same measured O cutoff (ADR-0004).
 auto_coupling_cutoff: 2.604
 
+# Cell volume from the measured density, D(meas.) = 5.66(2), as zincite g/cm^3 (Handbook of
+# Mineralogy, Anthony et al., eds., Mineralogical Society of America;
+# references/zincite.pdf): V = Z M / (rho N_A) with Z = 2, M(ZnO) from IUPAC 2021
+# atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
+volume_constraint:
+  volume_min: 47.58
+  volume_max: 47.92
+
 tree_search:
   max_sites: 4
   max_formula_units: 2
