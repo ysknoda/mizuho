@@ -1,0 +1,23 @@
+{
+  "reference": "corundum_al2o3",
+  "found_under": "x4 global-minimum gate after phases A-G and the review seed fixes (2026-10-01, seed 42)",
+  "error_found": 7.487558374940827e-16,
+  "error_published": 5.515086026038168e-08,
+  "param_vector": [
+    4.628841288997914,
+    13.845218478269576,
+    0.29920061939384845,
+    0.6637166008443126
+  ],
+  "published_vector": [
+    4.7606,
+    12.994,
+    0.30635,
+    0.6478299999996664
+  ],
+  "spacegroup": 167,
+  "lattice_deviation_percent": {
+    "a": -2.7676912784541052,
+    "c": 6.5508579211141775
+  }
+}

@@ -45,7 +45,7 @@ from ..lattice import _IMAGE_SHIFTS, ZERO_SHIFT_INDEX, get_lattice_system
 from ..structure import build_structure
 from .energy import compute_error
 from .penalties import (
-    INTEGRALITY_CEILING, _expand_wildcard, _integrality_applies, _midpoint_scale,
+    GRAY_BAND_WIDTHS, INTEGRALITY_CEILING, _expand_wildcard, _integrality_applies, _midpoint_scale,
     reject_removed_keys,
 )
 
@@ -375,6 +375,12 @@ def make_gradient_fn(config, reference_param_vector):
                     # is +-1 away from half-integers, as in the numpy term.
                     dev = jnp.abs(cn_i - jnp.round(cn_i))
                     raw_cn = raw_cn + _penalty_jax(dev, 0.0, INTEGRALITY_CEILING, w, scale)
+                    # Mirrors penalties._gray_band_penalty (identity image
+                    # masked to zero, as for the soft count above).
+                    half = GRAY_BAND_WIDTHS * width
+                    gdev = jnp.maximum(0.0, half - jnp.abs(row - cutoff))
+                    gdev = jnp.where(jnp.asarray(identity[li]), 0.0, gdev)
+                    raw_cn = raw_cn + w * jnp.sum((gdev / max(cutoff, 1e-6)) ** 2)
             # Same per-centre-atom normalisation as energy.py's CN
             # section (raw_cn / max(len(ci_arr), 1)) -- MUST match, or
             # this term's gradient is wrong by a factor of len(ci_arr)

@@ -76,6 +76,9 @@ def _nacl_config():
     # from an integer, so the integrality term (ADR-0007) is active and its
     # JAX gradient is checked against finite differences here.
     lambda: _center_with_neighbors_config(d=1.95),
+    # One neighbour shell 0.05 A past the cutoff: inside the gray band
+    # (cutoff +- 0.3 A), so the gray-band term's gradient is checked too.
+    lambda: _center_with_neighbors_config(d=2.05),
 ])
 def test_gradient_matches_full_finite_difference(cfg_factory):
     cfg, pv = cfg_factory()

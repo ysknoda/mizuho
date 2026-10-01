@@ -564,14 +564,14 @@ def _cn_config(center_charge, d, n=3, cn=(2, 3)):
 
 
 def test_integrality_penalises_a_half_integer_soft_count_inside_the_band():
-    """Three neighbours at 1.95 A (cutoff 2.0, width 0.1): each counts
-    expit(0.5) = 0.6225, soft CN 1.8674. Inside [1, 3] so the band term is
-    zero; 0.1326 from an integer, so integrality charges
-    w * ((0.1326 - 0.05) / scale)^2 with the parent's scale."""
+    """Three neighbours at 1.69 A (cutoff 2.0, width 0.1), just outside the
+    gray band [1.7, 2.3]: each counts expit(3.1) = 0.9569, soft CN 2.8707.
+    Inside [1, 3] so the band term is zero; 0.1293 from an integer, so
+    integrality charges w * ((0.1293 - 0.05) / scale)^2."""
     from scipy.special import expit
     from mizuho.objective.energy import compute_error
-    cfg, pv = _cn_config(+2, d=1.95, cn=(1, 3))
-    cn = 3 * expit(0.5)
+    cfg, pv = _cn_config(+2, d=1.69, cn=(1, 3))
+    cn = 3 * expit(3.1)
     dev = abs(cn - round(cn))
     expected = 1.5 * ((dev - 0.05) / 2.0) ** 2        # scale = midpoint(1, 3) = 2
     assert compute_error(pv, cfg) == pytest.approx(expected, rel=1e-9)
@@ -592,7 +592,27 @@ def test_integrality_is_silent_within_the_dead_band():
 def test_breakdown_reports_the_integrality_share():
     from mizuho.objective.breakdown import error_breakdown
     from mizuho.objective.energy import compute_error
-    cfg, pv = _cn_config(+2, d=1.95, cn=(1, 3))
+    cfg, pv = _cn_config(+2, d=1.69, cn=(1, 3))
     entry = error_breakdown(pv, cfg)["cn"][0]
     assert entry["integrality_penalty"] == pytest.approx(compute_error(pv, cfg), rel=1e-9)
-    assert entry["integrality_max_dev"] == pytest.approx(0.1326, abs=1e-4)
+    assert entry["integrality_max_dev"] == pytest.approx(0.1293, abs=1e-4)
+    assert entry["gray_band_penalty"] == 0.0
+
+
+def test_gray_band_matches_hand_calc_and_reports_anions_separately():
+    """Three neighbours 0.05 A past the 2.0 A cutoff sit inside the gray
+    band (+-0.3 A): each charges w * ((0.3 - 0.05) / 2.0)^2. Cation centre:
+    added to the objective. Anion centre: reported, never added."""
+    from mizuho.objective.breakdown import error_breakdown
+    from mizuho.objective.energy import compute_error
+    expected = 3 * 1.5 * ((0.3 - 0.05) / 2.0) ** 2
+    cfg, pv = _cn_config(+2, d=2.05, cn=(0, 3))
+    e = error_breakdown(pv, cfg)["cn"][0]
+    assert e["gray_band_penalty"] == pytest.approx(expected, rel=1e-9)
+    assert e["gray_band_report_all_centres"] == pytest.approx(expected, rel=1e-9)
+    assert e["gray_band_atoms"] == 3
+    cfg, pv = _cn_config(-2, d=2.05, cn=(0, 3))
+    e = error_breakdown(pv, cfg)["cn"][0]
+    assert e["gray_band_penalty"] == 0.0
+    assert e["gray_band_report_all_centres"] == pytest.approx(expected, rel=1e-9)
+    assert compute_error(pv, cfg) == pytest.approx(e["penalty"], abs=1e-12)

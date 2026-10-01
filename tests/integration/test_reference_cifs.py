@@ -45,6 +45,9 @@ EXPECTED = {
     "forsterite_Pbnm.cif": (62, Counter(["Mg@a", "Mg@c", "Si@c", "O@c", "O@c", "O@d"])),
     "forsterite_Pnma.cif": (62, Counter(["Mg@a", "Mg@c", "Si@c", "O@c", "O@c", "O@d"])),
     "wurtzite.cif": (186, Counter(["Zn@b", "O@b"])),
+    "fluorite.cif": (225, Counter(["Ca@a", "F@c"])),
+    "sphalerite.cif": (216, Counter(["Zn@a", "S@c"])),
+    "pyrite.cif": (205, Counter(["Fe@a", "S@c"])),
 }
 
 

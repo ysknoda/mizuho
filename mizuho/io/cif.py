@@ -85,6 +85,20 @@ def _same_point(p, q, lat) -> bool:
 # ---------------------------------------------------------------------------
 
 
+class _Value(str):
+    """A quoted or text-field token: always a value, even when it begins
+    with '_' or reads like a keyword (pyrite.cif quotes data names as
+    values in its publcif loops)."""
+
+
+def _is_tag(tok) -> bool:
+    return tok.startswith("_") and not isinstance(tok, _Value)
+
+
+def _is_word(tok, word: str) -> bool:
+    return not isinstance(tok, _Value) and tok.lower() == word
+
+
 def _tokens(text: str):
     lines = text.splitlines()
     i = 0
@@ -96,7 +110,7 @@ def _tokens(text: str):
             while i < len(lines) and not lines[i].startswith(";"):
                 buf.append(lines[i])
                 i += 1
-            yield "\n".join(buf).strip()
+            yield _Value("\n".join(buf).strip())
             i += 1
             continue
         j, n = 0, len(line)
@@ -113,7 +127,7 @@ def _tokens(text: str):
                     line[k] == ch and (k + 1 == n or line[k + 1].isspace())
                 ):
                     k += 1
-                yield line[j + 1 : k]
+                yield _Value(line[j + 1 : k])
                 j = k + 1
             else:
                 k = j
@@ -134,33 +148,28 @@ def _parse_block(
     while i < len(toks):
         tok = toks[i]
         low = tok.lower()
-        if low.startswith("data_"):
+        if not isinstance(tok, _Value) and low.startswith("data_"):
             if seen_data:
-                break  # first data block only
+                break                       # first data block only
             seen_data = True
             i += 1
-        elif low == "loop_":
+        elif _is_word(tok, "loop_"):
             i += 1
             tags = []
-            while i < len(toks) and toks[i].startswith("_"):
+            while i < len(toks) and _is_tag(toks[i]):
                 tags.append(toks[i].lower())
                 i += 1
             values = []
-            while (
-                i < len(toks)
-                and not toks[i].startswith("_")
-                and toks[i].lower() != "loop_"
-                and not toks[i].lower().startswith("data_")
-            ):
+            while (i < len(toks) and not _is_tag(toks[i]) and not _is_word(toks[i], "loop_")
+                   and not (not isinstance(toks[i], _Value)
+                            and toks[i].lower().startswith("data_"))):
                 values.append(toks[i])
                 i += 1
             if tags and len(values) % len(tags):
-                raise ValueError(
-                    f"loop {tags[0]}: {len(values)} values for {len(tags)} tags"
-                )
-            rows = [values[k : k + len(tags)] for k in range(0, len(values), len(tags))]
+                raise ValueError(f"loop {tags[0]}: {len(values)} values for {len(tags)} tags")
+            rows = [values[k:k + len(tags)] for k in range(0, len(values), len(tags))]
             loops.append((tags, rows))
-        elif tok.startswith("_"):
+        elif _is_tag(tok):
             items[low] = toks[i + 1] if i + 1 < len(toks) else ""
             i += 2
         else:
@@ -199,11 +208,28 @@ def parse_symop(expr: str) -> tuple[np.ndarray, np.ndarray]:
     return R, t
 
 
+_ELEMENTS = set("""
+H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn
+Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce
+Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn
+Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl
+Mc Lv Ts Og""".split())
+
+
 def _element(symbol: str) -> str:
-    m = re.match(r"([A-Z][a-z]?)", symbol)
+    """Element of a type symbol or label: 'Fe2+', 'O2-', 'Mg1', and also
+    upper-case 'FE' (some programs write it so; read as F it would turn
+    pyrite into a fluoride). Two letters win when they name an element."""
+    m = re.match(r"([A-Za-z]{1,2})", symbol)
     if not m:
         raise ValueError(f"cannot read an element from {symbol!r}")
-    return m.group(1)
+    two = m.group(1).capitalize()
+    if len(two) == 2 and two in _ELEMENTS:
+        return two
+    one = two[0]
+    if one in _ELEMENTS:
+        return one
+    raise ValueError(f"cannot read an element from {symbol!r}")
 
 
 def _loop_with(loops, tag):

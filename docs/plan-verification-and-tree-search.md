@@ -251,6 +251,12 @@ objective is not unique (below), which is its precondition.
 Automatic space-group search, judged on detected symmetry at 1e-3 A: NaCl -> 99,
 CsCl -> 51, Si -> 123, ZnO -> 123, TiO2 -> 47. None reaches its known answer.
 
+### Design review and round 2 (2026-10-01)
+
+Gray-band penalty added (cation centres in the objective, all centres reported); it rejects one
+more impostor and leaves seven. ADR-0005's two-round cap is reached:
+[ADR-0014](adr/0014-first-shell-constraints-cannot-make-the-objective-unique.md).
+
 ### Findings that need a design decision
 
 1. Six of nine minerals still have impostors after phases A-G: the second round of

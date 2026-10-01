@@ -42,3 +42,11 @@ mizuho's Wyckoff database. Reconstructing spinel from memory in the wrong SG227 
 Mg-O distance of 0.21 A, so nothing in this directory is trusted until it reproduces the published
 bond lengths and coordination numbers of the mineral it claims to be. That check is
 setting-independent, which is exactly why it is the one used.
+
+### Non-oxide references (design review 2026-10-01)
+
+| file | source | role |
+|---|---|---|
+| `fluorite.cif` | COD 1000043, Cheetham et al. 1971 | reference — CaF2, Fm-3m; Ca-F 2.365 A, Ca CN 8, F CN 4 |
+| `sphalerite.cif` | COD 1100043, Jumpertz 1955 | reference — ZnS, F-43m; Zn-S 2.345 A, CN 4 / 4 |
+| `pyrite.cif` | COD 7700358, Zuniga-Puelles et al. 2019 | reference — FeS2, Pa-3; Fe-S 2.2640 A, S-S 2.1615 A (both reproduced). Writes element symbols upper-case (`FE`) and quotes data names as loop values; the reader handles both |

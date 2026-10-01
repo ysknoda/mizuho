@@ -1,0 +1,29 @@
+# Pyrite FeS2, space group 205 (Pa-3), Z = 4. A persulfide: S2(2-) dimers,
+# so S carries -1 and every S bonds one S as well as three Fe -- an
+# anion-anion bond no other reference has.
+# Reference: tests/fixtures/reference/pyrite.cif (COD 7700358,
+# Zuniga-Puelles et al. 2019, a = 5.4178 A, S x = 0.38482). Cited
+# coordination: Fe 6 (octahedron), S 3 Fe + 1 S. Measured (ADR-0004,
+# ADR-0007): Fe-S 2.2640 A (next 3.448 A); S-S 2.1617 A (next 3.078 A),
+# both matching the CIF's own bond table (2.2640, 2.1615 A).
+composition: FeS2
+spacegroup: 205
+spacegroup_symbol: Pa-3
+ionic_charges: {Fe: 2, S: -1}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+lattice_bounds:
+  a: [4.9, 6.0]
+bond_constraints:
+  - {atom1: Fe, atom2: S, distance_min: 2.21, distance_max: 2.31, cutoff: 2.856, weight: 1.0}
+  - {atom1: S, atom2: S, distance_min: 2.11, distance_max: 2.21, cutoff: 2.620, weight: 1.0}
+angle_constraints:
+  # Measured 85.64-94.36 deg below the 150 deg trans threshold.
+  - {atom_center: Fe, atom_neighbor: S, angle_min: 85.0, angle_max: 95.0, angle_cutoff: 2.856, weight: 1.0}
+coordination_constraints:
+  - {center_atom: Fe, neighbor_atom: S, cn_min: 6, cn_max: 6, cutoff_distance: 2.856, weight: 1.5}
+  - {center_atom: S, neighbor_atom: X, cn_min: 3, cn_max: 3, cutoff_distance: 2.856, weight: 1.0}
+  - {center_atom: S, neighbor_atom: S, cn_min: 1, cn_max: 1, cutoff_distance: 2.620, weight: 1.0}
+auto_coupling_cutoff: 2.856
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 6, cma_maxiter: 250, refine_maxiter: 300, seed: 42}

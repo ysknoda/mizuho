@@ -1,0 +1,24 @@
+# Sphalerite (zinc blende) ZnS, space group 216 (F-43m), Z = 4. First
+# sulfide reference; polytype of wurtzite-type ZnS.
+# Reference: tests/fixtures/reference/sphalerite.cif (COD 1100043,
+# Jumpertz 1955, a = 5.4145 A). Cited coordination: Zn 4, S 4. Measured
+# (ADR-0004, ADR-0007): Zn-S 2.3445 A, next Zn-S shell 4.4895 A.
+composition: ZnS
+spacegroup: 216
+spacegroup_symbol: F-43m
+ionic_charges: {Zn: 2, S: -2}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+lattice_bounds:
+  a: [4.9, 6.0]
+bond_constraints:
+  - {atom1: Zn, atom2: S, distance_min: 2.29, distance_max: 2.40, cutoff: 3.417, weight: 1.0}
+angle_constraints:
+  # Measured 109.47 deg (ideal tetrahedron), rounded outward to 5 deg.
+  - {atom_center: Zn, atom_neighbor: S, angle_min: 105.0, angle_max: 110.0, angle_cutoff: 3.417, weight: 1.5}
+coordination_constraints:
+  - {center_atom: Zn, neighbor_atom: S, cn_min: 4, cn_max: 4, cutoff_distance: 3.417, weight: 1.5}
+  - {center_atom: S, neighbor_atom: X, cn_min: 4, cn_max: 4, cutoff_distance: 3.417, weight: 1.0}
+auto_coupling_cutoff: 3.417
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 6, cma_maxiter: 250, refine_maxiter: 300, seed: 42}

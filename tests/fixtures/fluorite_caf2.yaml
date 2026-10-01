@@ -1,0 +1,24 @@
+# Fluorite CaF2, space group 225 (Fm-3m), Z = 4. First halide reference.
+# Reference: tests/fixtures/reference/fluorite.cif (COD 1000043, Cheetham
+# et al. 1971, a = 5.462 A). Cited coordination: Ca 8 (cube), F 4
+# (tetrahedron). Values measured at the reference (ADR-0004, ADR-0007):
+# Ca-F 2.3651 A, next Ca-F shell 4.529 A.
+composition: CaF2
+spacegroup: 225
+spacegroup_symbol: Fm-3m
+ionic_charges: {Ca: 2, F: -1}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+lattice_bounds:
+  a: [4.9, 6.0]
+bond_constraints:
+  - {atom1: Ca, atom2: F, distance_min: 2.31, distance_max: 2.42, cutoff: 3.447, weight: 1.0}
+angle_constraints:
+  # Measured 70.53-109.47 deg below the 150 deg trans threshold.
+  - {atom_center: Ca, atom_neighbor: F, angle_min: 70.0, angle_max: 110.0, angle_cutoff: 3.447, weight: 1.0}
+coordination_constraints:
+  - {center_atom: Ca, neighbor_atom: F, cn_min: 8, cn_max: 8, cutoff_distance: 3.447, weight: 1.5}
+  - {center_atom: F, neighbor_atom: X, cn_min: 4, cn_max: 4, cutoff_distance: 3.447, weight: 1.0}
+auto_coupling_cutoff: 3.447
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 6, cma_maxiter: 250, refine_maxiter: 300, seed: 42}

@@ -58,6 +58,28 @@ def _integrality_penalty(cn: float, w: float, scale: float) -> float:
     return _penalty(abs(cn - round(cn)), 0.0, INTEGRALITY_CEILING, w, scale=scale)
 
 
+# Half-width of the gray band around a coordination cutoff, in smoothing
+# widths: inside it the logistic soft count is neither ~0 nor ~1
+# (expit(3) = 0.95), so an atom there is half-counted.
+GRAY_BAND_WIDTHS = 3.0
+
+
+def _gray_band_penalty(distances: np.ndarray, cutoff: float, width: float,
+                       w: float) -> float:
+    """Penalty on neighbours sitting inside [cutoff - 3*width, cutoff +
+    3*width]: an atom there counts fractionally, which is how atoms parked
+    at the cutoff pass a coordination target (an even number of them even
+    passes integrality: four Si 0.0002 A outside the cutoff give soft CN
+    4.000 at integer CN 2). Inverted band: zero outside, (half - |d - c|)
+    inside, in the parent constraint's weight, scaled by the band midpoint
+    (the cutoff) like every other distance term. Non-finite distances
+    (an excluded identity image) contribute nothing."""
+    half = GRAY_BAND_WIDTHS * width
+    d = distances[np.isfinite(distances)]
+    dev = np.maximum(0.0, half - np.abs(d - cutoff))
+    return float(w * np.sum((dev / max(cutoff, _SCALE_EPS)) ** 2))
+
+
 def _midpoint_scale(vmin, vmax, eps: float = _SCALE_EPS) -> float:
     """Natural physical scale for relative-error normalisation of a
     two-sided band [vmin, vmax]: the band's own midpoint. Band WIDTH

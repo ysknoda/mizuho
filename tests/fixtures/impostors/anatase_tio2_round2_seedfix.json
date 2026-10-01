@@ -1,0 +1,21 @@
+{
+  "reference": "anatase_tio2",
+  "found_under": "x4 global-minimum gate after phases A-G and the review seed fixes (2026-10-01, seed 42)",
+  "error_found": 6.463048675772186e-20,
+  "error_published": 9.4296509820705e-09,
+  "param_vector": [
+    3.9083069902885184,
+    9.279914355104635,
+    0.28866286316197304
+  ],
+  "published_vector": [
+    3.771,
+    9.43,
+    0.29059999999999997
+  ],
+  "spacegroup": 141,
+  "lattice_deviation_percent": {
+    "a": 3.6411294162959016,
+    "c": -1.5915762979359964
+  }
+}

@@ -14,7 +14,7 @@ from ..lattice import (
 )
 from ..structure import build_structure
 from .penalties import (
-    _integrality_applies, _integrality_penalty, reject_removed_keys,
+    _gray_band_penalty, _integrality_applies, _integrality_penalty, reject_removed_keys,
     _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
@@ -391,6 +391,11 @@ def compute_error(param_vector: np.ndarray, config: dict,
             p    = _penalty(cn_i, cnmin, cnmax, w, scale=scale)
             if integral:
                 p += _integrality_penalty(cn_i, w, scale)
+                # Cation-centred only for now; the version including anion
+                # centres is reported by breakdown.py, not added here
+                # (design review 2026-10-01: oxide-only references cannot
+                # yet decide whether anion shells should be held to it).
+                p += _gray_band_penalty(dm[li].ravel(), cutoff, width, w)
             raw_cn += p
             if verbose and p > 0:
                 neigh_lbl = cc["neighbor_atom"]

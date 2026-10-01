@@ -71,6 +71,15 @@ class Reference:
                    source, bonds, atom_counts)
 
 
+_SOFT_TAIL = ("pyrite S(S): the ADR-0004 midpoint cutoff (2.620 A) leaves six second-shell S at 3.078 A each " \
+         "adding expit(-4.58) = 0.010, so soft CN is ~1.05 at integer CN 1. Recorded, not tuned")
+
+
+def _with_xfail(names, xfail):
+    return [pytest.param(n, marks=pytest.mark.xfail(reason=xfail[n], strict=True))
+            if n in xfail else n for n in names]
+
+
 _REFS = {
     # Fd-3m, a = 8.083 A. Origin choice 1, which is what mizuho's SG227
     # table uses: the 32e parameter comes out at 0.3870, i.e. the
@@ -162,6 +171,22 @@ _REFS = {
         "CaSiO3 wollastonite, P-1, Z = 6 (COD 9005777, Ohashi 1984)",
         {"Si": (["O"], 4, 1.57, 1.67)},
         {"Ca": 6, "Si": 6, "O": 18}),
+    # Non-oxide references (design review 2026-10-01, Q15).
+    "fluorite_caf2": Reference.from_cif(
+        "fluorite_caf2", "fluorite.cif",
+        "CaF2 fluorite, Fm-3m (COD 1000043); Ca-F 2.365 A, Ca CN 8",
+        {"Ca": (["F"], 8, 2.36, 2.37)},
+        {"Ca": 4, "F": 8}),
+    "sphalerite_zns": Reference.from_cif(
+        "sphalerite_zns", "sphalerite.cif",
+        "ZnS sphalerite, F-43m (COD 1100043); Zn-S 2.345 A, CN 4",
+        {"Zn": (["S"], 4, 2.34, 2.35)},
+        {"Zn": 4, "S": 4}),
+    "pyrite_fes2": Reference.from_cif(
+        "pyrite_fes2", "pyrite.cif",
+        "FeS2 pyrite, Pa-3 (COD 7700358); Fe-S 2.2640 A, S-S 2.1615 A",
+        {"Fe": (["S"], 6, 2.26, 2.27)},
+        {"Fe": 4, "S": 8}),
     "wurtzite_zno": Reference.from_cif(
         "wurtzite_zno", "wurtzite.cif",
         "ZnO wurtzite, P6_3mc (COD 1577381); Zn-O 1.975 x3 / 1.991 A, CN 4",
@@ -199,7 +224,7 @@ def test_reference_structure_reproduces_published_bond_lengths(name):
         assert d[cn] - d[cn - 1] > 0.5
 
 
-@pytest.mark.parametrize("name", sorted(_REFS))
+@pytest.mark.parametrize("name", _with_xfail(sorted(_REFS), {"pyrite_fes2": _SOFT_TAIL}))
 def test_every_coordination_term_reports_the_cited_number(name):
     """The core of the gate. A coordination target is a cited chemical
     fact (ADR-0004), so the objective must reproduce it here."""
@@ -226,6 +251,9 @@ def test_every_coordination_term_reports_the_cited_number(name):
     ("forsterite_mg2sio4", 1e-3),
     ("wurtzite_zno", 1e-3),
     ("wollastonite_casio3", 1e-3),
+    ("fluorite_caf2", 1e-3),
+    ("sphalerite_zns", 1e-3),
+    pytest.param("pyrite_fes2", 1e-3, marks=pytest.mark.xfail(reason=_SOFT_TAIL, strict=True)),
     # Adamite's reference is a 1937 refinement whose As-O distances span
     # 1.588-1.814 A, wider than the cited 1.60-1.75 A band, leaving ~0.03.
     # Recorded rather than tuned away (ADR-0004).
@@ -260,7 +288,14 @@ IMPOSTORS = sorted(Path(FIXTURES, "impostors").glob("*.json"))
 IMPOSTOR_XFAIL = {
     "forsterite_mg2sio4_round2": "found AFTER phases A-G: error 8.1e-7 below the "
                                  "published 7.8e-6 at a -7.9% / +5.2%",
-    "adamite_round2": "found AFTER phases A-G: error ~1e-17 at b +4.95%",
+    "anatase_tio2_round2_seedfix": "every term zero at +3.6% / -1.6%",
+    "corundum_al2o3_round2_seedfix": "every term zero at c +6.6%; same polyhedral "
+                                      "connectivity as the published structure",
+    "diopside_camgsi2o6_round2_seedfix": "4e-11 at b +5.6%; SiO4 edge-sharing; only "
+                                         "the anion-centred gray band (report only) sees it",
+    "adamite_round2_seedfix": "4e-14 at +5.1/+5.8/+7.3%; only the anion-centred "
+                              "gray band (report only) sees it",
+    "forsterite_mg2sio4_round2_seedfix": "1.2e-6 below the published 7.8e-6 at b -9.7%",
     "anatase_tio2": "Ti-O 1.954/2.005 A and O-Ti-O angles all inside their "
                     "bands: bond (2%) and angle (5 deg rounding) slack compound "
                     "into a +4.9% / -2.8% lattice with every term at zero",

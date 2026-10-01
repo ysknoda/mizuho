@@ -117,6 +117,11 @@ coordination_constraints:
 # A^3 for the 5-atom Z=1 unit) is close to the Z=1-equivalent real
 # volume (396.9/6=66.15 A^3) -- the auto default was correct all along;
 # it was lattice_bounds that needed correcting to match it (see above).
+# Auto O(X) coupling cutoff measured at the reference (ADR-0004): the
+# O-cation first shell ends 2.639 A, the next starts 3.251 A. The
+# bond-derived default (2.70) sat 0.06 A past the first shell.
+auto_coupling_cutoff: 2.945
+
 volume_constraint: {}
 aspect_ratio_constraint: {}
 cell_validity_constraint: {}
