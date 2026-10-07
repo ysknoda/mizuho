@@ -69,6 +69,22 @@ The sample is thirteen impostors, all oxides, relaxed in their space group.
   budget ladder.
 - `mizuho compare` stays, as the display of `mizuho/bond_graph.py` (Q21).
 
+## Measured: the x4 global-minimum gate on the two tiers (2026-10-08, seed 42, early stopping on)
+
+| mineral | Stage 1 converged | tier 1 (class) | tier 2 (3 %, no bound) |
+| --- | --- | --- | --- |
+| anatase, fluorite, pyrite, sphalerite, spinel, wurtzite | yes | pass | pass |
+| quartz | yes | pass | a −1.2 / c +3.7 % |
+| corundum | yes | pass | c +11.6 %, on a bound |
+| forsterite | yes | pass | a on a bound |
+| diopside | 8.3e-3 | different class | on bounds |
+| adamite | 1.0e-2 | different class | on a bound |
+| topaz | 4.1e-2 | different class (Al CN 5) | on bounds |
+
+Nine of twelve pass tier 1; six pass tier 2. Every tier-1 failure is the optimiser's: Stage 1
+stopped above the published structure's error, as at x4 before (ADR-0017). The three shards ran
+in 32-34 min each.
+
 ## Consequences
 
 - ADR-0007's "the real structure must be the unique minimum" is satisfied at the level that
