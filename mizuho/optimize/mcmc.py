@@ -52,6 +52,7 @@ def multistart_mcmc(
         periodic_mask=None,
         seeded_x0=None,
         mcmc_temperature=None,
+        endpoint_ledger=None,
         **_ignored,
 ):
     """
@@ -83,6 +84,14 @@ def multistart_mcmc(
         interface compatibility with the shared optimize_fn contract
         but IGNORED -- an MCMC chain does not have a "restart" to
         early-stop the way the other backends' do.
+
+    endpoint_ledger : optional optimize.endpoints.EndpointLedger. The
+        chain then runs in MCMC_SEGMENTS segments; after each, every
+        walker's lowest point of that segment at or below the ledger's
+        threshold is handed to it, and the chain stops once it says stop
+        (ADR-0019). If no point reaches the threshold, the lowest
+        FALLBACK_TOP_K points are classified as not converged. None (the
+        default) runs the chain in one call exactly as before.
 
     Returns
     -------
@@ -149,10 +158,61 @@ def multistart_mcmc(
         return -f / temperature
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob)
-    sampler.run_mcmc(p0, int(maxiter), progress=False)
+    if endpoint_ledger is None or not endpoint_ledger.enabled:
+        sampler.run_mcmc(p0, int(maxiter), progress=False)
+    else:
+        _run_segments(sampler, p0, int(maxiter), objective, temperature,
+                      endpoint_ledger)
 
     if verbose:
         print(f"      [MCMC] {nwalkers} walkers x {maxiter} steps "
               f"(T={temperature:.4g})  best error: {best['f']:.6f}")
 
     return best["x"], best["f"]
+
+
+# Segments of a chain handed to an EndpointLedger (ADR-0019).
+MCMC_SEGMENTS = 10
+
+
+def _run_segments(sampler, p0, nsteps, objective, temperature, ledger):
+    """Run `nsteps` in MCMC_SEGMENTS pieces, continuing one chain. After
+    each piece, every walker's lowest point of that piece at or below the
+    ledger's threshold is classified; the chain stops once the ledger
+    says stop. A walker's objective is recovered from its log-probability
+    (-f / T), then re-evaluated so the ledger sees the exact value."""
+    from .endpoints import FALLBACK_TOP_K, add_fallback
+
+    seg = max(1, -(-nsteps // MCMC_SEGMENTS))
+    done, state = 0, p0
+    while done < nsteps:
+        n = min(seg, nsteps - done)
+        sampler.run_mcmc(state, n, progress=False)
+        state, done = None, done + n
+        chain = sampler.get_chain()[-n:]          # (n, nwalkers, ndim)
+        logp = sampler.get_log_prob()[-n:]        # (n, nwalkers)
+        for w in range(chain.shape[1]):
+            k = int(np.argmax(logp[:, w]))
+            if not np.isfinite(logp[k, w]):
+                continue
+            if -logp[k, w] * temperature > ledger.threshold * (1 + 1e-9) + 1e-12:
+                continue
+            x = chain[k, w].copy()
+            if ledger.add(x, float(objective(x))):
+                return
+    if not ledger.any_zero():
+        chain = sampler.get_chain(flat=True)
+        logp = sampler.get_log_prob(flat=True)
+        order = np.argsort(-logp)
+        seen, points = set(), []
+        for i in order:
+            if not np.isfinite(logp[i]):
+                break
+            key = tuple(np.round(chain[i], 10))
+            if key in seen:
+                continue
+            seen.add(key)
+            points.append((chain[i].copy(), float(objective(chain[i]))))
+            if len(points) >= FALLBACK_TOP_K:
+                break
+        add_fallback(ledger, points)

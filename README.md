@@ -137,11 +137,12 @@ or any coordination number whose soft count disagrees with the integer one.
 
 | command | purpose |
 | --- | --- |
-| `mizuho run cfg.yaml` | predict structures |
+| `mizuho run cfg.yaml` | predict structures; `--top N` writes N structures of distinct bond-graph topology classes |
 | `mizuho check cfg.yaml ref.cif` | evaluate the objective at a reference structure: per-term breakdown, integer and soft coordination numbers, detected space group. No optimisation |
 | `mizuho fit cfg.yaml ref.cif` | fix the reference's Wyckoff assignment, optimise lattice and coordinates, and compare with the reference (lattice deviation, bound contacts, impostor warning). `--budget 4` is the global-minimum gate's budget |
 | `mizuho candidates cfg.yaml` | run Phase 1 only and list its ranking after merging equivalent assignments, with free-parameter strata; `--seeds 5` reports the rank spread, `--find 'Mg@a Al@d O@e'` locates one assignment |
 | `mizuho wyckoff SG` | list a space group's Wyckoff positions in mizuho's own setting, with the letters its Euclidean normalizer makes equivalent |
+| `mizuho compare cfg.yaml ref.cif cand...` | diagnostic: put each candidate (CIF, or an impostor JSON record) in a topology class by its periodic bond graph, and against the reference list cell strain (volume and shape), bond-length, bond-angle and polyhedral-distortion shifts per topological atom type, and contacts the config's own cutoffs disagree about ([ADR-0018](docs/adr/0018-bond-graph-diagnostic.md)) |
 | `mizuho suggest ref.cif` | reserved |
 
 `check` and `fit` read the CIF in any setting or origin choice and convert
@@ -210,7 +211,7 @@ commonly used top-level keys are:
 | `coordination_constraints` | List of `{center_atom, neighbor_atom, cn_min, cn_max, cutoff_distance}` |
 | `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle |
 | `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening |
-| `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ... |
+| `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ...; `topology_grouping` (see below) |
 | `auto_composition` | Set `true` for fully automatic composition + structure discovery |
 | `composition_pool` | List of composition strings to search over |
 
@@ -250,6 +251,30 @@ Whenever `ionic_charges` is set and some cation-centred `coordination_constraint
 Every penalty term divides its deviation by a natural physical scale for that term before squaring: the target band's own midpoint for bond, angle, coordination-number, volume, aspect-ratio and cell-validity terms; `distance_min` for repulsion; the cell's total absolute ionic charge for charge balance. All terms are therefore comparable relative deviations and each constraint's `weight` means what it says. Without this, the coordination-number term, a raw count, made up 65-99% of the total error across this project's own fixtures regardless of the nominal weights. The overlap term is already relative by construction; `hybridisation_constraints` stay in raw degrees.
 
 Normalisation is always on. The former `normalize_penalties` key was removed and a config that still sets it is rejected with an error ([ADR-0009](docs/adr/0009-always-normalise-penalties.md)): the gates had been scoring the raw objective while every search optimised the normalised one.
+
+### Topology classes of the search's end points
+
+Every Stage-1 end point is put in a bond-graph topology class (coordination sequences and
+polyhedral linkage, `mizuho/bond_graph.py`, with bonds taken from the config's own cutoffs). A
+class is one structure for a DFT starting point: DFT relaxed every recorded impostor of the
+published structure's class to the published structure
+([ADR-0019](docs/adr/0019-topology-class-is-the-unit-of-success.md)). So:
+
+- an assignment's restarts stop once two end points at or below `zero_error_threshold` share a
+  class (every backend; MCMC and Optuna classify only points at or below the threshold);
+- `run --top N` returns N structures of different classes, and the global ranking shows one row
+  per class ("Same" counts the merged rows).
+
+```yaml
+optimization:
+  topology_grouping:
+    zero_error_threshold: 1.0e-3   # end points at or below this satisfy the constraints
+    early_stop: true               # false runs every restart (e.g. to re-measure a budget ladder)
+    early_stop_hits: 2
+```
+
+A config without any `cutoff_distance` or bond `cutoff` has no bonds, and so no classes:
+grouping and early stopping are then off.
 
 ### Bond-valence sums
 

@@ -268,40 +268,69 @@ def test_objective_is_approximately_zero_at_the_reference_structure(name, ceilin
 
 
 # ---------------------------------------------------------------------------
-# Impostor regression (ADR-0005): every point the global-minimum gate once
-# reached far from the published lattice must now score above the
-# published structure. Recorded by scripts/record_impostor.py.
+# Impostor regression (ADR-0005, split by ADR-0019). Every point the
+# global-minimum gate once reached far from the published lattice is
+# classified by its bond-graph topology class:
+# - a DIFFERENT class is a different structure and must score above the
+#   published structure;
+# - the SAME class is the published structure for a DFT starting point
+#   (ADR-0019: every same-class impostor relaxed to it under PBEsol), so
+#   no score comparison is required. The DFT-checked ones are pinned below,
+#   so a change to the classifier that splits them off fails here.
+# Recorded by scripts/record_impostor.py.
 # ---------------------------------------------------------------------------
 
 IMPOSTORS = sorted(Path(FIXTURES, "impostors").glob("*.json"))
 
 # Written at the correct threshold and xfail-ed, never relaxed (ADR-0005).
-IMPOSTOR_XFAIL = {
-    "corundum_al2o3_round4_volume": "zero error at c +11.6% on a bound, volume -0.2%",
-    "forsterite_mg2sio4_round4_volume": "zero error at a +9.9 / b -5.4 / c -3.8%, volume +0.0%",
-    "quartz_sio2_round4_volume": "zero error at a -1.2 / c +3.7%, volume +1.1%",
-    "corundum_al2o3_round3_bvs": "zero error at a +4.7% / c -8.8% with bond valence on, at "
-                                 "the published volume (+0.0%): a shape change no first-shell "
-                                 "term, bond valence or density can see (design review Q2 d)",
+IMPOSTOR_XFAIL = {}
+
+# Relaxed to the published structure by DFT (ADR-0019,
+# scripts/dft_basin/basins.json).
+DFT_SAME_STRUCTURE = {
+    "anatase_tio2", "anatase_tio2_round2_seedfix", "anatase_tio2_round3_bvs",
+    "corundum_al2o3_round3_bvs", "corundum_al2o3_round4_volume",
+    "forsterite_mg2sio4_round2_seedfix", "forsterite_mg2sio4_round4_volume",
+    "quartz_sio2_round3_bvs", "quartz_sio2_round4_volume",
 }
 
 
-@pytest.mark.parametrize("path", [
-    pytest.param(p, id=p.stem, marks=pytest.mark.xfail(reason=IMPOSTOR_XFAIL[p.stem], strict=True))
-    if p.stem in IMPOSTOR_XFAIL else pytest.param(p, id=p.stem)
-    for p in IMPOSTORS])
-def test_known_impostor_scores_above_the_published_structure(path):
+def _impostor_case(path):
+    """(full config, impostor vector, published vector) of a record.
+    Fixture names are <reference>[_<round tag>].json."""
     record = json.loads(path.read_text())
     ref = _REFS[record["reference"]]
     _, pv, asg = ref.build()
-    # Fixture names are <reference>[_<round tag>].json.
     base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
     if record["reference"] == "adamite":
         base["charge_balance_weight"] = 0.0     # undetermined H, as above
     full = dict(build_sg_config(base, ref.sg))
     full["wyckoff_sites"] = assignments_to_sites(asg)
-    impostor = error_breakdown(np.array(record["param_vector"]), full)["total"]
+    return full, np.array(record["param_vector"]), pv, record
+
+
+def _same_class(path) -> bool:
+    from mizuho.optimize.endpoints import topology_key
+    full, imp, pv, _ = _impostor_case(path)
+    return topology_key(imp, full) == topology_key(pv, full)
+
+
+_SAME = {p.stem: _same_class(p) for p in IMPOSTORS}
+
+
+@pytest.mark.parametrize("path", [
+    pytest.param(p, id=p.stem, marks=pytest.mark.xfail(reason=IMPOSTOR_XFAIL[p.stem], strict=True))
+    if p.stem in IMPOSTOR_XFAIL else pytest.param(p, id=p.stem)
+    for p in IMPOSTORS if not _SAME[p.stem]])
+def test_different_class_impostor_scores_above_the_published_structure(path):
+    full, imp, pv, record = _impostor_case(path)
+    impostor = error_breakdown(imp, full)["total"]
     published = error_breakdown(pv, full)["total"]
     assert impostor > published, (
         f"{path.stem}: impostor {impostor:.8f} vs published {published:.8f} "
         f"(lattice {record['lattice_deviation_percent']})")
+
+
+@pytest.mark.parametrize("stem", sorted(DFT_SAME_STRUCTURE))
+def test_dft_same_structure_impostor_is_in_the_published_class(stem):
+    assert _SAME[stem], f"{stem}: DFT relaxes it to the published structure (ADR-0019)"

@@ -13,7 +13,7 @@ volume-aware / smart_init / gradient-hint restart strategy) unchanged.
 import numpy as np
 import cma as _cma
 
-from .._parallel_utils import run_parallel_tasks
+from .endpoints import run_restarts
 from .init_guess import (
     _apply_lattice_gradient_hint, _estimate_lattice_x0, _smart_init_x0,
 )
@@ -191,6 +191,7 @@ def multistart_cma_es(
         plateau_patience=None,
         plateau_rel_tol=1e-3,
         restart_workers=1,
+        endpoint_ledger=None,
         **_ignored,
 ):
     """
@@ -286,6 +287,12 @@ def multistart_cma_es(
                  reordering only; the RETURNED best_x/best_f are
                  unaffected by restart_workers.
 
+    endpoint_ledger : optional optimize.endpoints.EndpointLedger. Every
+                 restart's end point is handed to it in restart order,
+                 and the remaining restarts are skipped once it says
+                 stop (ADR-0019). None (the default) runs every
+                 restart exactly as before.
+
     Returns
     -------
     best_x : np.ndarray
@@ -348,7 +355,7 @@ def multistart_cma_es(
 
     # ---- Pass 2: run each restart's _cma_es, sequentially or across a
     # process pool (restart_workers) ----
-    results = run_parallel_tasks(_run_one_restart_cma, tasks, max_workers=restart_workers)
+    results = run_restarts(_run_one_restart_cma, tasks, restart_workers, endpoint_ledger)
 
     for restart, (x_r, f_r) in enumerate(results):
         is_best = f_r < global_best_f

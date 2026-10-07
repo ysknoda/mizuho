@@ -4,6 +4,8 @@ Wyckoff coordinates for a single Wyckoff-site assignment.
 
 import functools
 import logging
+from dataclasses import dataclass
+from typing import List, Optional
 
 import numpy as np
 from scipy.optimize import minimize
@@ -14,6 +16,7 @@ from .basin_hopping import multistart_basin_hopping
 from .cma import multistart_cma_es
 from .differential_evolution import multistart_differential_evolution
 from .dual_annealing import multistart_dual_annealing
+from .endpoints import EndpointLedger, grouping_settings, topology_key
 from .init_guess import _coordination_shell_seed_x0
 from . import mcmc as _mcmc_module
 from . import optuna_backend as _optuna_module
@@ -113,15 +116,40 @@ def _refine_options(method, maxiter, ftol):
     return {"maxiter": maxiter, "ftol": ftol}
 
 
-def optimize_one_assignment(
+@dataclass
+class AssignmentResult:
+    """One topology class reached by one Wyckoff assignment (ADR-0019)."""
+    params: np.ndarray
+    error: float
+    structure: dict
+    topology: Optional[tuple]   # bond_graph signature; None without cutoffs
+    n_endpoints: int            # Stage-1 endpoints that fell in this class
+    n_zero: int                 # ...of which at or below the threshold
+    converged: bool             # False: a sampling backend's fallback class
+    n_stage1: int               # Stage-1 endpoints handed to the ledger
+    stopped_early: bool
+
+
+def optimize_assignment(
         assignments,
         config,
         opt_cfg,
         verbose=False,
         label="",
         shell_seed_info=None,
+        max_classes=1,
 ):
     """
+    Stage 1 and Stage 2 for one Wyckoff assignment, returning up to
+    `max_classes` topology classes as AssignmentResult, lowest error first
+    ([] if the optimisation failed). The best Stage-1 point is always the
+    first class; further classes are the best Stage-1 endpoints of other
+    topology classes (optimize.endpoints, ADR-0019), each refined by
+    Stage 2. Stage 1 stops early once `early_stop_hits` endpoints at or
+    below `zero_error_threshold` share one class (optimization.
+    topology_grouping). With max_classes=1 the result is the same as
+    optimize_one_assignment's.
+
     Optimise lattice constants and Wyckoff free coordinates for a single
     Wyckoff assignment using two stages:
 
@@ -302,6 +330,9 @@ def optimize_one_assignment(
                      module docstring for that safeguard.
                                                           (default: 1)
 
+    topology_grouping : {zero_error_threshold, early_stop, early_stop_hits},
+                     see optimize.endpoints (defaults: 1e-3, true, 2)
+
     `shell_seed_info`, if given, is the {group_index: best_param_vector}
     dict geometry.rank_by_feasibility already computed while ranking
     this assignment (see pipeline.search_and_rank, which threads it
@@ -311,14 +342,13 @@ def optimize_one_assignment(
     config with no coordination_constraints/angle_constraints, where
     that function is a no-op regardless.
 
-    Returns (best_params, best_error, structure).
     """
     cfg = dict(config)
     cfg["wyckoff_sites"] = assignments_to_sites(assignments)
 
     bounds = build_bounds(cfg)
     if not bounds:
-        return None, 1e10, None
+        return []
 
     # Wyckoff free parameters (the trailing slice of the flat parameter
     # vector -- see build_bounds/build_structure) are periodic fractional
@@ -400,6 +430,10 @@ def optimize_one_assignment(
             "notes) -- remove hybridisation_constraints from this "
             "config or set refine_jac: false")
 
+    # Validated before the try below, like refine_jac: a bad
+    # topology_grouping block is a configuration error, not a failed run.
+    ledger = EndpointLedger(cfg, grouping_settings(opt_cfg))
+
     try:
         # Stage 1: multi-start global search (backend-selectable). Every
         # backend accepts (and ignores, via its own **kwargs) whichever
@@ -431,78 +465,144 @@ def optimize_one_assignment(
             plateau_patience = plateau_patience,
             plateau_rel_tol  = plateau_rel_tol,
             restart_workers  = restart_workers,
+            endpoint_ledger  = ledger,
         )
         if verbose:
             print(f"      Stage 1 ({opt_cfg.get('backend', 'cma')}) best error: {best_e:.6f}")
+            if ledger.enabled:
+                n_zero = sum(1 for c in ledger.classes.values() if c.n_zero)
+                print(f"      Stage 1 endpoints: {ledger.n_added}, topology classes: "
+                      f"{len(ledger.classes)} ({n_zero} at or below "
+                      f"{ledger.threshold:g})"
+                      + ("  -- stopped early" if ledger.stopped else ""))
 
-        # best_p (Stage 1's own result) is used as make_gradient_fn's
-        # reference point -- it fixes which symmetry operations produce
-        # each Wyckoff site's distinct orbit points (see that function's
-        # own docstring for why this is safe: an ordinary optimiser
-        # output is never exactly at a higher-symmetry special
-        # position). Any unexpected internal failure here (as opposed
-        # to the two config-validation cases already checked above)
-        # falls through to this function's normal except-Exception
-        # fallback below, same as any other Stage-1/Stage-2 failure.
-        jac_fn = _energy_jax.make_gradient_fn(cfg, best_p) if refine_jac else None
+        reps = [(best_p, best_e)]
+        if max_classes > 1 and ledger.enabled:
+            best_key = topology_key(best_p, cfg)
+            for c in ledger.ranked():
+                if len(reps) >= max_classes:
+                    break
+                if c.key != best_key:
+                    reps.append((c.best_x, c.best_f))
 
-        # Stage 2: local refinement, one or more scipy.optimize.minimize
-        # methods run in sequence (refine_methods, default just
-        # "L-BFGS-B" -- unchanged behaviour unless a caller opts into
-        # more). Each method's result is accepted only if it improves on
-        # the CURRENT best (which may already be a previous method's
-        # improvement within this same loop), so trying additional
-        # methods can only help, never hurt, at the cost of one extra
-        # cheap local-search call per additional method.
-        for method in refine_methods:
-            # jac is omitted entirely (not passed as jac=None) when
-            # unused, rather than always included, so a refine_jac=False
-            # call (the default) is a byte-for-byte identical minimize()
-            # invocation to every prior phase -- including for callers
-            # that monkeypatch minimize with a narrower signature not
-            # expecting a jac keyword at all (see test_refine_methods.py,
-            # predates phase I-2).
-            kwargs = dict(method=method, bounds=bounds,
-                          options=_refine_options(method, refine_max, refine_ftol))
-            if jac_fn is not None and method in _JAC_CAPABLE_METHODS:
-                kwargs["jac"] = jac_fn
-            ref = minimize(obj, best_p, **kwargs)
-            if not ref.success:
-                logger.debug(
-                    "%s refinement for %s did not report convergence "
-                    "(status=%s: %s); its result is still accepted if "
-                    "its objective value improves on the current best, "
-                    "since the objective value -- not the local "
-                    "optimiser's own convergence flag -- is the ground "
-                    "truth here.",
-                    method, label, ref.status, ref.message)
-            # Re-evaluate at ref.x instead of trusting ref.fun. On an
-            # ABNORMAL termination (status 2) scipy's L-BFGS-B can
-            # return a `fun` that does not correspond to the returned
-            # `x` -- reproducible whenever the start point sits on a
-            # bound, which is exactly what Stage 1 produces when the
-            # true optimum is pinned at a lattice_bounds edge. Trusting
-            # the stale value is unsafe in BOTH directions: an
-            # understated `fun` gets accepted and propagates an error
-            # this structure does not actually achieve (breaking the
-            # invariant that compute_error(best_p) == best_e, which
-            # candidate ranking and error_breakdown both rely on), and
-            # an overstated one discards a refinement that was
-            # genuinely an improvement. One extra objective call per
-            # method per candidate is negligible against Stage 1's
-            # thousands.
-            ref_f = obj(ref.x)
-            if ref_f < best_e:
-                best_p, best_e = ref.x, ref_f
-                if verbose:
-                    print(f"      {method} refined error -> {best_e:.6f}")
-
-        structure = build_structure(best_p, cfg)
-        return best_p, best_e, structure
+        results = []
+        for x0, f0 in reps:
+            p, e = _stage2(obj, cfg, x0, f0, bounds, refine_methods, refine_max,
+                           refine_ftol, refine_jac, verbose, label)
+            key = topology_key(p, cfg) if ledger.enabled else None
+            cls = ledger.classes.get(key) if key is not None else None
+            results.append(AssignmentResult(
+                params=p, error=e, structure=build_structure(p, cfg), topology=key,
+                n_endpoints=cls.n_endpoints if cls else 0,
+                n_zero=cls.n_zero if cls else 0,
+                converged=cls.converged if cls else True,
+                n_stage1=ledger.n_added, stopped_early=ledger.stopped))
+        return _merge_classes(results)
 
     except Exception as exc:
         if verbose:
             import traceback
             traceback.print_exc()
             print(f"    [WARN] Optimisation failed for {label}: {exc}")
+        return []
+
+
+def _merge_classes(results: List[AssignmentResult]) -> List[AssignmentResult]:
+    """Lowest error first, one entry per topology class: two refined
+    points that ended in one class are one structure (ADR-0019). Entries
+    without a class (no cutoffs) are never merged."""
+    out, seen = [], set()
+    for r in sorted(results, key=lambda r: r.error):
+        if r.topology is not None and r.topology in seen:
+            continue
+        if r.topology is not None:
+            seen.add(r.topology)
+        out.append(r)
+    return out
+
+
+def _stage2(obj, cfg, best_p, best_e, bounds, refine_methods, refine_max,
+            refine_ftol, refine_jac, verbose, label):
+    """Stage 2: local refinement of one Stage-1 point."""
+    # best_p (Stage 1's own result) is used as make_gradient_fn's
+    # reference point -- it fixes which symmetry operations produce
+    # each Wyckoff site's distinct orbit points (see that function's
+    # own docstring for why this is safe: an ordinary optimiser
+    # output is never exactly at a higher-symmetry special
+    # position). Any unexpected internal failure here (as opposed
+    # to the config-validation cases optimize_assignment checks first)
+    # propagates to optimize_assignment's except-Exception
+    # fallback, same as any other Stage-1/Stage-2 failure.
+    jac_fn = _energy_jax.make_gradient_fn(cfg, best_p) if refine_jac else None
+
+    # Stage 2: local refinement, one or more scipy.optimize.minimize
+    # methods run in sequence (refine_methods, default just
+    # "L-BFGS-B" -- unchanged behaviour unless a caller opts into
+    # more). Each method's result is accepted only if it improves on
+    # the CURRENT best (which may already be a previous method's
+    # improvement within this same loop), so trying additional
+    # methods can only help, never hurt, at the cost of one extra
+    # cheap local-search call per additional method.
+    for method in refine_methods:
+        # jac is omitted entirely (not passed as jac=None) when
+        # unused, rather than always included, so a refine_jac=False
+        # call (the default) is a byte-for-byte identical minimize()
+        # invocation to every prior phase -- including for callers
+        # that monkeypatch minimize with a narrower signature not
+        # expecting a jac keyword at all (see test_refine_methods.py,
+        # predates phase I-2).
+        kwargs = dict(method=method, bounds=bounds,
+                      options=_refine_options(method, refine_max, refine_ftol))
+        if jac_fn is not None and method in _JAC_CAPABLE_METHODS:
+            kwargs["jac"] = jac_fn
+        ref = minimize(obj, best_p, **kwargs)
+        if not ref.success:
+            logger.debug(
+                "%s refinement for %s did not report convergence "
+                "(status=%s: %s); its result is still accepted if "
+                "its objective value improves on the current best, "
+                "since the objective value -- not the local "
+                "optimiser's own convergence flag -- is the ground "
+                "truth here.",
+                method, label, ref.status, ref.message)
+        # Re-evaluate at ref.x instead of trusting ref.fun. On an
+        # ABNORMAL termination (status 2) scipy's L-BFGS-B can
+        # return a `fun` that does not correspond to the returned
+        # `x` -- reproducible whenever the start point sits on a
+        # bound, which is exactly what Stage 1 produces when the
+        # true optimum is pinned at a lattice_bounds edge. Trusting
+        # the stale value is unsafe in BOTH directions: an
+        # understated `fun` gets accepted and propagates an error
+        # this structure does not actually achieve (breaking the
+        # invariant that compute_error(best_p) == best_e, which
+        # candidate ranking and error_breakdown both rely on), and
+        # an overstated one discards a refinement that was
+        # genuinely an improvement. One extra objective call per
+        # method per candidate is negligible against Stage 1's
+        # thousands.
+        ref_f = obj(ref.x)
+        if ref_f < best_e:
+            best_p, best_e = ref.x, ref_f
+            if verbose:
+                print(f"      {method} refined error -> {best_e:.6f}")
+
+    return best_p, best_e
+
+
+def optimize_one_assignment(
+        assignments,
+        config,
+        opt_cfg,
+        verbose=False,
+        label="",
+        shell_seed_info=None,
+):
+    """The best topology class of optimize_assignment, as
+    (best_params, best_error, structure); (None, 1e10, None) on failure.
+    See optimize_assignment for the stages and every YAML key."""
+    results = optimize_assignment(assignments, config, opt_cfg, verbose=verbose,
+                                  label=label, shell_seed_info=shell_seed_info)
+    if not results:
         return None, 1e10, None
+    best = results[0]
+    return best.params, best.error, best.structure

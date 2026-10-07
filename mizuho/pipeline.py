@@ -163,9 +163,32 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
     return valid_asgns, n_found, shell_seeds
 
 
+def merge_same_topology(entries: list, params_of, config_of) -> list:
+    """Collapse a ranking to one entry per bond-graph topology class
+    (ADR-0019): `entries` sorted lowest error first; returns
+    [(entry, n_merged), ...] keeping each class's first (lowest-error)
+    entry and counting how many later entries fell in the same class.
+    Entries whose class cannot be computed (no cutoffs in the config, or
+    no structure) are kept as they are."""
+    from .optimize.endpoints import topology_key
+
+    kept, index = [], {}
+    for entry in entries:
+        params, cfg = params_of(entry), config_of(entry)
+        key = topology_key(params, cfg) if params is not None else None
+        if key is not None and key in index:
+            k = index[key]
+            kept[k] = (kept[k][0], kept[k][1] + 1)
+            continue
+        if key is not None:
+            index[key] = len(kept)
+        kept.append((entry, 0))
+    return kept
+
+
 def _optimize_candidates_parallel(valid_asgns: list, sg_config: dict,
                                    opt_cfg: dict, shell_seeds: list,
-                                   workers: int) -> list:
+                                   workers: int, max_classes=None) -> list:
     """
     Phase 2 candidate dispatch via optimize.parallel's
     optimize_assignments_parallel, shared by cli.py's single-
@@ -199,12 +222,63 @@ def _optimize_candidates_parallel(valid_asgns: list, sg_config: dict,
 
     return optimize_assignments_parallel(
         valid_asgns, sg_config, opt_cfg, max_workers=workers,
-        labels=labels, shell_seeds=shell_seeds, on_result=_on_result)
+        labels=labels, shell_seeds=shell_seeds, on_result=_on_result,
+        max_classes=max_classes)
+
+
+def optimise_candidates(valid_asgns: list, sg_config: dict, opt_cfg: dict,
+                        shell_seeds: list, verbose: bool, max_classes: int = 1,
+                        header: str = "") -> list:
+    """Phase 2 for every candidate, shared by `run`'s single-composition
+    mode and this module's composition modes. Returns [(asgn, result)],
+    one per topology class each assignment reached (up to max_classes,
+    lowest error first, ADR-0019); result is None when an assignment's
+    optimisation failed."""
+    from .optimize.driver import optimize_assignment
+
+    workers = sg_config.get("parallel", {}).get("candidate_workers")
+    out = []
+    if workers is not None and workers > 1 and len(valid_asgns) > 1:
+        print(f"\n[Phase 2] {header}Optimising {len(valid_asgns)} "
+              f"candidate(s) in parallel ({workers} workers) ...")
+        per_asgn = _optimize_candidates_parallel(
+            valid_asgns, sg_config, opt_cfg, shell_seeds, workers,
+            max_classes=max_classes)
+        for results, asgn in zip(per_asgn, valid_asgns):
+            out.extend((asgn, r) for r in results) if results else out.append((asgn, None))
+        return out
+
+    print(f"\n[Phase 2] {header}Optimising {len(valid_asgns)} candidate(s) ...")
+    for k, asgn in enumerate(valid_asgns):
+        label = " + ".join(f"{a.element}@{a.entry.letter}" for a in asgn)
+        print(f"\n  --- {header}[{k+1}/{len(valid_asgns)}] {label} ---")
+        results = optimize_assignment(asgn, sg_config, opt_cfg, verbose=verbose,
+                                      label=label, shell_seed_info=shell_seeds[k],
+                                      max_classes=max_classes)
+        if not results:
+            print("  Error = (optimisation failed)")
+            out.append((asgn, None))
+            continue
+        best = results[0]
+        print(f"  Error = {best.error:.6f}")
+        lp = best.structure["lattice_params"]
+        print(f"  Lattice: a={lp['a']:.4f} b={lp['b']:.4f} c={lp['c']:.4f} A")
+        if best.topology is not None:
+            stop = ", stopped early" if best.stopped_early else ""
+            print(f"  Stage-1 endpoints: {best.n_stage1}, best class reached by "
+                  f"{best.n_endpoints}{stop}")
+        for r in results[1:]:
+            print(f"  Further topology class: error {r.error:.6f} "
+                  f"(reached by {r.n_endpoints} endpoint(s))"
+                  + ("" if r.converged else ", not converged"))
+        out.extend((asgn, r) for r in results)
+    return out
 
 
 def _run_one_composition(comp_str: str, base_config: dict,
                           opt_cfg: dict, verbose: bool,
-                          run_idx: int, total_runs: int) -> list:
+                          run_idx: int, total_runs: int,
+                          max_classes: int = 1) -> list:
     """
     Run Phase-0 + Phase-1 + Phase-2 for a single composition string.
     Returns list of (error, comp_str, sg, asgn, best_p, structure, sg_config).
@@ -256,39 +330,25 @@ def _run_one_composition(comp_str: str, base_config: dict,
         if not valid_asgns:
             continue
 
-        workers = sg_config.get("parallel", {}).get("candidate_workers")
-        if workers is not None and workers > 1 and len(valid_asgns) > 1:
-            print(f"\n[Phase 2] SG {sg} - Optimising {len(valid_asgns)} "
-                  f"candidate(s) for {comp_str} in parallel "
-                  f"({workers} workers) ...")
-            parallel_results = _optimize_candidates_parallel(
-                valid_asgns, sg_config, opt_cfg, shell_seeds, workers)
-            for (best_p, best_e, structure), asgn in zip(parallel_results, valid_asgns):
-                results.append((best_e, comp_str, sg, asgn, best_p,
-                                 structure, sg_config))
-        else:
-            print(f"\n[Phase 2] SG {sg} - Optimising {len(valid_asgns)} "
-                  f"candidate(s) for {comp_str} ...")
-
-            for k, asgn in enumerate(valid_asgns):
-                label = " + ".join(
-                    f"{a.element}@{a.entry.letter}" for a in asgn)
-                print(f"\n  --- [{k+1}/{len(valid_asgns)}] {label} ---")
-
-                best_p, best_e, structure = optimize_one_assignment(
-                    asgn, sg_config, opt_cfg,
-                    verbose=verbose, label=label,
-                    shell_seed_info=shell_seeds[k])
-
-                print(f"  Error = {best_e:.6f}")
-                if structure is not None:
-                    lp = structure["lattice_params"]
-                    print(f"  Lattice: a={lp['a']:.4f}  c={lp.get('c', lp['a']):.4f} A")
-
-                results.append((best_e, comp_str, sg, asgn, best_p,
-                                 structure, sg_config))
+        for asgn, r in optimise_candidates(valid_asgns, sg_config, opt_cfg,
+                                           shell_seeds, verbose, max_classes,
+                                           header=f"SG {sg} {comp_str} "):
+            if r is None:
+                results.append((1e10, comp_str, sg, asgn, None, None, sg_config))
+            else:
+                results.append((r.error, comp_str, sg, asgn, r.params,
+                                r.structure, sg_config))
 
     return results
+
+
+def _composition_config(entry) -> dict:
+    """The full config of a composition-mode ranking entry."""
+    err, comp, sg, asgn, best_p, structure, sg_config = entry
+    cfg = dict(sg_config)
+    cfg["wyckoff_sites"] = assignments_to_sites(asgn)
+    cfg["composition"] = comp
+    return cfg
 
 
 def _run_auto_composition_mode(base_config: dict, args) -> None:
@@ -453,36 +513,15 @@ def _run_auto_composition_mode(base_config: dict, args) -> None:
                 print(f"  No valid Wyckoff assignments -- skipping.")
                 continue
 
-            # Step 3b: CMA-ES optimisation
-            workers = sg_config.get("parallel", {}).get("candidate_workers")
-            if workers is not None and workers > 1 and len(valid_asgns) > 1:
-                print(f"\n[Phase 2] Optimising {len(valid_asgns)} "
-                      f"candidate(s) in parallel ({workers} workers) ...")
-                parallel_results = _optimize_candidates_parallel(
-                    valid_asgns, sg_config, opt_cfg, shell_seeds, workers)
-                for (best_p, best_e, structure), asgn in zip(parallel_results, valid_asgns):
+            # Step 3b: Phase 2 optimisation, one entry per topology class
+            for asgn, r in optimise_candidates(valid_asgns, sg_config, opt_cfg,
+                                               shell_seeds, args.verbose, args.top):
+                if r is None:
                     all_results.append(
-                        (best_e, comp_str, sg, asgn, best_p, structure, sg_config))
-            else:
-                print(f"\n[Phase 2] Optimising {len(valid_asgns)} candidate(s) ...")
-                for k, asgn in enumerate(valid_asgns):
-                    label = " + ".join(
-                        f"{a.element}@{a.entry.letter}" for a in asgn)
-                    print(f"\n  --- [{k+1}/{len(valid_asgns)}] {label} ---")
-
-                    best_p, best_e, structure = optimize_one_assignment(
-                        asgn, sg_config, opt_cfg,
-                        verbose=args.verbose, label=label,
-                        shell_seed_info=shell_seeds[k])
-
-                    print(f"  Error = {best_e:.6f}")
-                    if structure is not None:
-                        lp = structure["lattice_params"]
-                        print(f"  Lattice: a={lp['a']:.4f}  "
-                              f"c={lp.get('c', lp['a']):.4f} A")
-
-                    all_results.append(
-                        (best_e, comp_str, sg, asgn, best_p, structure, sg_config))
+                        (1e10, comp_str, sg, asgn, None, None, sg_config))
+                else:
+                    all_results.append((r.error, comp_str, sg, asgn, r.params,
+                                        r.structure, sg_config))
 
     if not all_results:
         print("\n  No valid structures found."); return
@@ -491,22 +530,24 @@ def _run_auto_composition_mode(base_config: dict, args) -> None:
     # Step 4: Global ranking + POSCAR output
     # ================================================================
     all_results.sort(key=lambda x: x[0])
+    # One row per bond-graph topology class (ADR-0019).
+    ranked = merge_same_topology(all_results, lambda e: e[4], _composition_config)
 
     print(f"\n{'='*65}")
     print("  GLOBAL RANKING  (auto-discovered compositions)")
     print(f"{'='*65}")
     print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
-          f"{'Composition':<22}  Assignment")
+          f"{'Same':>4}  {'Composition':<22}  Assignment")
     print(f"  {'-'*72}")
-    for rank, (err, comp, sg, asgn, _, _, _) in enumerate(all_results, 1):
+    for rank, ((err, comp, sg, asgn, _, _, _), n_same) in enumerate(ranked, 1):
         label = " + ".join(
             f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
             for a in asgn)
-        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {comp:<22}  {label}")
+        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {n_same:>4}  {comp:<22}  {label}")
 
-    top_n = min(args.top, len(all_results))
+    top_n = min(args.top, len(ranked))
     for rank in range(top_n):
-        err, comp, sg, asgn, best_p, structure, sg_config = all_results[rank]
+        err, comp, sg, asgn, best_p, structure, sg_config = ranked[rank][0]
         if structure is None:
             print(f"\n  [Rank {rank+1}] No valid structure."); continue
 
@@ -550,7 +591,7 @@ def _run_composition_pool(base_config: dict, pool: list, args) -> None:
         comp_results = _run_one_composition(
             comp_str, base_config, opt_cfg,
             verbose=args.verbose,
-            run_idx=idx, total_runs=total)
+            run_idx=idx, total_runs=total, max_classes=args.top)
         all_results.extend(comp_results)
 
     if not all_results:
@@ -559,23 +600,25 @@ def _run_composition_pool(base_config: dict, pool: list, args) -> None:
 
     # Global ranking
     all_results.sort(key=lambda x: x[0])
+    # One row per bond-graph topology class (ADR-0019).
+    ranked = merge_same_topology(all_results, lambda e: e[4], _composition_config)
 
     print(f"\n{'='*65}")
     print("  GLOBAL RANKING  (all compositions)")
     print(f"{'='*65}")
     print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
-          f"{'Composition':<22}  Assignment")
+          f"{'Same':>4}  {'Composition':<22}  Assignment")
     print(f"  {'-'*70}")
-    for rank, (err, comp, sg, asgn, _, _, _) in enumerate(all_results, 1):
+    for rank, ((err, comp, sg, asgn, _, _, _), n_same) in enumerate(ranked, 1):
         label = " + ".join(
             f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
             for a in asgn)
-        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {comp:<22}  {label}")
+        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {n_same:>4}  {comp:<22}  {label}")
 
     # Output top-N POSCARs
-    top_n = min(args.top, len(all_results))
+    top_n = min(args.top, len(ranked))
     for rank in range(top_n):
-        err, comp, sg, asgn, best_p, structure, sg_config = all_results[rank]
+        err, comp, sg, asgn, best_p, structure, sg_config = ranked[rank][0]
         if structure is None:
             print(f"\n  [Rank {rank+1}] No valid structure.")
             continue

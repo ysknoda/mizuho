@@ -87,7 +87,7 @@ _GP_DEFAULT_MAX_TRIALS = 200
 
 
 def _run_optuna_study(sampler, objective, bounds, n_trials, config,
-                       seeded_x0, verbose, label):
+                       seeded_x0, verbose, label, endpoint_ledger=None):
     """Shared study-construction/seeding/optimise/extract-best logic for
     every Optuna sampler this module supports -- the samplers differ
     only in how `sampler` itself was constructed by the caller."""
@@ -122,7 +122,28 @@ def _run_optuna_study(sampler, objective, bounds, n_trials, config,
         print(f"      [Optuna {label}] {n_trials} trials "
               f"({len(seed_points)} seeded)")
 
-    study.optimize(trial_objective, n_trials=n_trials, show_progress_bar=False)
+    callbacks = []
+    if endpoint_ledger is not None and endpoint_ledger.enabled:
+        # ADR-0019: every trial at or below the threshold is classified;
+        # the study stops once the ledger says stop.
+        def _to_ledger(study, trial):
+            if trial.value is None or trial.value > endpoint_ledger.threshold:
+                return
+            x = np.array([trial.params[name] for name in param_names])
+            if endpoint_ledger.add(x, float(trial.value)):
+                study.stop()
+        callbacks.append(_to_ledger)
+
+    study.optimize(trial_objective, n_trials=n_trials, show_progress_bar=False,
+                   callbacks=callbacks or None)
+
+    if endpoint_ledger is not None and endpoint_ledger.enabled and not endpoint_ledger.any_zero():
+        from .endpoints import FALLBACK_TOP_K, add_fallback
+        done = [t for t in study.trials if t.value is not None]
+        done.sort(key=lambda t: t.value)
+        add_fallback(endpoint_ledger,
+                     [(np.array([t.params[n] for n in param_names]), float(t.value))
+                      for t in done[:FALLBACK_TOP_K]])
 
     best_x = np.array([study.best_params[name] for name in param_names])
     best_f = float(study.best_value)
@@ -143,6 +164,7 @@ def multistart_optuna_tpe(
         config=None,
         periodic_mask=None,
         seeded_x0=None,
+        endpoint_ledger=None,
         **_ignored,
 ):
     """
@@ -181,7 +203,8 @@ def multistart_optuna_tpe(
 
     sampler = optuna.samplers.TPESampler(seed=seed, n_startup_trials=n_startup)
     return _run_optuna_study(sampler, objective, bounds, n_trials, config,
-                              seeded_x0, verbose, "TPE")
+                              seeded_x0, verbose, "TPE",
+                              endpoint_ledger=endpoint_ledger)
 
 
 def multistart_optuna_gp(
@@ -195,6 +218,7 @@ def multistart_optuna_gp(
         periodic_mask=None,
         seeded_x0=None,
         gp_n_trials=None,
+        endpoint_ledger=None,
         **_ignored,
 ):
     """
@@ -251,4 +275,5 @@ def multistart_optuna_gp(
         warnings.simplefilter("ignore", category=optuna.exceptions.ExperimentalWarning)
         sampler = optuna.samplers.GPSampler(seed=seed, n_startup_trials=n_startup)
     return _run_optuna_study(sampler, objective, bounds, n_trials, config,
-                              seeded_x0, verbose, "GP")
+                              seeded_x0, verbose, "GP",
+                              endpoint_ledger=endpoint_ledger)

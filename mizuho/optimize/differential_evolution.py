@@ -19,7 +19,7 @@ import functools
 import numpy as np
 from scipy.optimize import differential_evolution
 
-from .._parallel_utils import run_parallel_tasks
+from .endpoints import run_restarts
 from .cma import restart_seed
 from .init_guess import (
     _apply_lattice_gradient_hint, _estimate_lattice_x0, _smart_init_x0,
@@ -89,6 +89,7 @@ def multistart_differential_evolution(
         plateau_patience=None,
         plateau_rel_tol=1e-3,
         restart_workers=1,
+        endpoint_ledger=None,
         **_ignored,
 ):
     """
@@ -138,6 +139,12 @@ def multistart_differential_evolution(
         own restart_workers docstring for the shared design and the
         cosmetic (results-only, not verbose-console-order) effect this
         has when verbose=True.
+
+    endpoint_ledger : optional optimize.endpoints.EndpointLedger. Every
+                 restart's end point is handed to it in restart order,
+                 and the remaining restarts are skipped once it says
+                 stop (ADR-0019). None (the default) runs every
+                 restart exactly as before.
 
     Returns
     -------
@@ -214,7 +221,7 @@ def multistart_differential_evolution(
 
     # ---- Pass 2: run each restart's differential_evolution,
     # sequentially or across a process pool (restart_workers) ----
-    results = run_parallel_tasks(_run_one_restart_de, tasks, max_workers=restart_workers)
+    results = run_restarts(_run_one_restart_de, tasks, restart_workers, endpoint_ledger)
 
     for restart, (x_r, f_r) in enumerate(results):
         is_best = f_r < global_best_f

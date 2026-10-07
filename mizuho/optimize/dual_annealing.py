@@ -33,7 +33,7 @@ before writing this wrapper, rather than assumed:
 import numpy as np
 from scipy.optimize import dual_annealing
 
-from .._parallel_utils import run_parallel_tasks
+from .endpoints import run_restarts
 from .cma import restart_seed
 from .init_guess import (
     _apply_lattice_gradient_hint, _estimate_lattice_x0, _smart_init_x0,
@@ -75,6 +75,7 @@ def multistart_dual_annealing(
         plateau_patience=None,
         plateau_rel_tol=1e-3,
         restart_workers=1,
+        endpoint_ledger=None,
         **_ignored,
 ):
     """
@@ -113,6 +114,12 @@ def multistart_dual_annealing(
         a process pool instead of one at a time (phase H-4). 1 (the
         default) is fully sequential; see optimize.cma.multistart_cma_es's
         own restart_workers docstring for the shared design.
+
+    endpoint_ledger : optional optimize.endpoints.EndpointLedger. Every
+                 restart's end point is handed to it in restart order,
+                 and the remaining restarts are skipped once it says
+                 stop (ADR-0019). None (the default) runs every
+                 restart exactly as before.
 
     Returns
     -------
@@ -166,7 +173,7 @@ def multistart_dual_annealing(
 
     # ---- Pass 2: run each restart's dual_annealing, sequentially or
     # across a process pool (restart_workers) ----
-    results = run_parallel_tasks(_run_one_restart_da, tasks, max_workers=restart_workers)
+    results = run_restarts(_run_one_restart_da, tasks, restart_workers, endpoint_ledger, lambda x: np.clip(x, lo, hi))
 
     for restart, (x_r_raw, f_r) in enumerate(results):
         x_r = np.clip(x_r_raw, lo, hi)

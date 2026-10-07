@@ -7,11 +7,16 @@ Opening this file tells you it takes hours; that is why the fast gates
 - Rank: the published topology's equivalence class (ADR-0011) sits within
   the first `max_candidates` of Phase 1's ranking, judged on the WORST rank
   over five seeds, with the spread recorded (ADR-0012).
-- Global minimum, two stages reported separately: (1) the optimiser,
-  given the published topology at x4 budget, reaches an error no worse
-  than the published structure's + 1e-3; (2) the point it reaches has
-  every lattice length within 3% of the published one and touches no
-  lattice bound (ADR-0006).
+- Global minimum, reported separately: (1) the optimiser, given the
+  published topology at x4 budget, reaches an error no worse than the
+  published structure's + 1e-3; (2) tier 1, the pass: the point it
+  reaches is in the published structure's bond-graph topology class, i.e.
+  a DFT starting point that relaxes to the published structure
+  (ADR-0019); (3) tier 2, the higher grade: every lattice length within
+  3% of the published one and no lattice bound touched (ADR-0006).
+  Stage 1 stops early on the default optimization.topology_grouping, as
+  in production; set its early_stop to false to re-measure a budget
+  ladder (ADR-0019, Q27).
 - End-to-end proxy: under the same budget, the published topology beats
   the top five ranked topologies.
 
@@ -166,7 +171,16 @@ def test_global_minimum_stage1_optimiser_converged(name):
 
 
 @pytest.mark.parametrize("name", MINERALS)
-def test_global_minimum_stage2_reached_lattice_is_the_published_one(name):
+def test_global_minimum_tier1_reached_the_published_topology_class(name):
+    from mizuho.optimize.endpoints import topology_key
+
+    cfg, best_p, _, pv_ref, _ = _global_minimum_fit(name)
+    assert topology_key(best_p, cfg) == topology_key(pv_ref, cfg), (
+        f"{name}: the reached point is not in the published topology class")
+
+
+@pytest.mark.parametrize("name", MINERALS)
+def test_global_minimum_tier2_reached_lattice_is_the_published_one(name):
     from mizuho.diagnostics import bound_contacts, lattice_names
 
     cfg, best_p, _, pv_ref, _ = _global_minimum_fit(name)

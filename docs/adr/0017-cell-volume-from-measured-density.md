@@ -42,3 +42,8 @@ pinned as `*_round4_volume` xfail fixtures.
 More budget reaches zero error, and reaches it away from the published structure: diopside's
 remaining failure is a zero-error impostor, not an optimiser shortfall (ADR-0007's ladder again).
 A better optimiser would arrive there faster; it would not arrive at the published structure.
+
+## Amended by ADR-0019
+
+The round-4 impostors (quartz, corundum, forsterite) and diopside's x8/x16 points relax under
+DFT to the published structure; the round-4 xfails are resolved by ADR-0019's two-tier gate.

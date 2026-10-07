@@ -81,3 +81,10 @@ The rank-gate results recorded above — spinel, diopside and topaz passing, ada
 put diopside at 163 and topaz at 26. ADR-0012 seeds Phase 1 and judges the gate on the worst rank
 over five seeds. ADR-0011 makes the gate compare equivalence classes of Wyckoff assignments rather
 than literal letters.
+
+## Amended by ADR-0019
+
+The global-minimum gate's pass is tier 1, the published structure's bond-graph topology class;
+the 3 % lattice criterion is kept as tier 2. The impostor regression gate compares scores only
+for impostors of a different topology class: DFT relaxed every same-class impostor to the
+published structure.

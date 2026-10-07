@@ -144,3 +144,9 @@ uniqueness. It does not.
 - Uniqueness is not provable. The global-minimum gate of ADR-0005 tests it where we can reach, the
   impostor regression pins the cases we found, and ADR-0005's two-round cap stops the hunt from
   running forever.
+
+## Amended by ADR-0019
+
+DFT relaxation of every recorded zero-error point ended at the published structure. Uniqueness
+is therefore required of the topology class reached, not of the point: points of the published
+class are the same structure for a DFT starting point.

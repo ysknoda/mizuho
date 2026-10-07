@@ -109,7 +109,9 @@ def test_seeded_x0_ignored_when_fewer_than_three_restarts(monkeypatch):
         captured.extend(tasks)
         return [(t[7], 1.0) for t in tasks]
 
-    monkeypatch.setattr(da, "run_parallel_tasks", capture)
+    # Restart dispatch lives in optimize.endpoints.run_restarts (ADR-0019).
+    import mizuho.optimize.endpoints as endpoints
+    monkeypatch.setattr(endpoints, "run_parallel_tasks", capture)
     bounds = [(0.0, 10.0), (0.0, 10.0)]
     target = np.array([9.9, 9.9])
     multistart_dual_annealing(

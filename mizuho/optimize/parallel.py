@@ -13,20 +13,24 @@ needed here.
 """
 
 import os
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import numpy as np
 
 from .._parallel_utils import run_parallel_tasks
 from ..structure import SiteAssignment
-from .driver import optimize_one_assignment
+from .driver import optimize_assignment, optimize_one_assignment
 
 
 def _run_one(args):
-    assignments, config, opt_cfg, label, shell_seed_info = args
-    return optimize_one_assignment(assignments, config, opt_cfg,
-                                    verbose=False, label=label,
-                                    shell_seed_info=shell_seed_info)
+    assignments, config, opt_cfg, label, shell_seed_info, max_classes = args
+    if max_classes is None:
+        return optimize_one_assignment(assignments, config, opt_cfg,
+                                        verbose=False, label=label,
+                                        shell_seed_info=shell_seed_info)
+    return optimize_assignment(assignments, config, opt_cfg, verbose=False,
+                               label=label, shell_seed_info=shell_seed_info,
+                               max_classes=max_classes)
 
 
 def optimize_assignments_parallel(
@@ -37,11 +41,14 @@ def optimize_assignments_parallel(
         labels: Optional[List[str]] = None,
         shell_seeds: Optional[List] = None,
         on_result: Optional[Callable[[int, str, float], None]] = None,
-) -> List[Tuple[Optional[np.ndarray], float, Optional[dict]]]:
+        max_classes: Optional[int] = None,
+) -> List:
     """
     Evaluate every candidate in assignments_list independently, in
     parallel. Returns [(best_p, best_e, structure), ...] in the SAME
-    order as assignments_list (not completion order).
+    order as assignments_list (not completion order); with max_classes
+    set, each entry is instead optimize_assignment's list of up to
+    max_classes AssignmentResult (one per topology class, ADR-0019).
 
     Falls back to sequential evaluation (no subprocess overhead) when
     max_workers resolves to 1 or there is only one candidate -- verbose
@@ -95,11 +102,14 @@ def optimize_assignments_parallel(
     will_parallelize = effective_workers > 1 and n > 1
     task_opt_cfg = dict(opt_cfg, restart_workers=1) if will_parallelize else opt_cfg
 
-    tasks = [(a, config, task_opt_cfg, lb, ss)
+    tasks = [(a, config, task_opt_cfg, lb, ss, max_classes)
              for a, lb, ss in zip(assignments_list, labels, shell_seeds)]
 
     def _wrapped_on_result(i, result):
-        _, best_e, _ = result
+        if max_classes is None:
+            best_e = result[1]
+        else:
+            best_e = result[0].error if result else 1e10
         on_result(i, labels[i], best_e)
 
     return run_parallel_tasks(

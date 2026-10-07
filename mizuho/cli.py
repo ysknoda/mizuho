@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 
 import yaml
@@ -20,8 +21,8 @@ from .objective.energy import compute_error
 from .lattice import CRYSTAL_SYSTEM_OF_SG, get_lattice_system
 from .optimize.driver import optimize_one_assignment
 from .pipeline import (
-    _optimize_candidates_parallel, _run_auto_composition_mode,
-    _run_composition_pool, build_sg_config, promote_to_detected_supergroup,
+    _run_auto_composition_mode, _run_composition_pool, build_sg_config,
+    merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
     search_and_rank,
 )
 from .search import auto_search_spacegroups
@@ -233,36 +234,15 @@ def _cmd_run(args) -> None:
                 print(f"  Skipping SG {sg} (no valid assignments).")
                 continue
 
-        # Phase 2: optimise each Wyckoff assignment
-        workers = sg_config.get("parallel", {}).get("candidate_workers")
-        if workers is not None and workers > 1 and len(valid_asgns) > 1:
-            print(f"\n[Phase 2] SG {sg} - Optimising {len(valid_asgns)} "
-                  f"candidate(s) in parallel ({workers} workers) ...")
-            parallel_results = _optimize_candidates_parallel(
-                valid_asgns, sg_config, opt_cfg, shell_seeds, workers)
-            for (best_p, best_e, structure), asgn in zip(parallel_results, valid_asgns):
-                all_results.append((best_e, sg, asgn, best_p, structure, sg_config))
-        else:
-            print(f"\n[Phase 2] SG {sg} - Optimising "
-                  f"{len(valid_asgns)} candidate(s) ...")
-
-            for k, asgn in enumerate(valid_asgns):
-                label = " + ".join(
-                    f"{a.element}@{a.entry.letter}" for a in asgn)
-                print(f"\n  --- SG{sg} [{k+1}/{len(valid_asgns)}] {label} ---")
-
-                best_p, best_e, structure = optimize_one_assignment(
-                    asgn, sg_config, opt_cfg,
-                    verbose=args.verbose, label=label,
-                    shell_seed_info=shell_seeds[k])
-
-                print(f"  Error = {best_e:.6f}")
-                if structure is not None:
-                    lp = structure["lattice_params"]
-                    print(f"  Lattice: a={lp['a']:.4f} b={lp['b']:.4f} "
-                          f"c={lp['c']:.4f} A")
-
-                all_results.append((best_e, sg, asgn, best_p, structure, sg_config))
+        # Phase 2: optimise each Wyckoff assignment; one entry per
+        # topology class it reached, up to --top (ADR-0019)
+        for asgn, r in optimise_candidates(valid_asgns, sg_config, opt_cfg,
+                                           shell_seeds, args.verbose, args.top,
+                                           header=f"SG{sg} "):
+            if r is None:
+                all_results.append((1e10, sg, asgn, None, None, sg_config))
+            else:
+                all_results.append((r.error, sg, asgn, r.params, r.structure, sg_config))
 
     if not all_results:
         print("\nNo valid structures found across all space groups."); sys.exit(0)
@@ -288,28 +268,31 @@ def _cmd_run(args) -> None:
     # Global ranking
     # ----------------------------------------------------------------
     all_results.sort(key=lambda x: x[0])
+    # One row per bond-graph topology class: entries that reached the same
+    # class are one structure (ADR-0019); "Same" counts the merged ones.
+    ranked = merge_same_topology(all_results, lambda e: e[3], _run_entry_config)
 
     print(f"\n{'='*65}")
     print("  GLOBAL RANKING")
     print(f"{'='*65}")
     print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
-          f"{'Crystal system':>14}  Assignment")
-    print(f"  {'-'*63}")
-    for rank, (err, sg, asgn, _, _, _) in enumerate(all_results, 1):
+          f"{'Crystal system':>14}  {'Same':>4}  Assignment")
+    print(f"  {'-'*69}")
+    for rank, ((err, sg, asgn, _, _, _), n_same) in enumerate(ranked, 1):
         label = " + ".join(
             f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
             for a in asgn)
         cs = CRYSTAL_SYSTEM_OF_SG.get(sg, "?")
-        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {cs:>14}  {label}")
+        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {cs:>14}  {n_same:>4}  {label}")
 
     # ----------------------------------------------------------------
     # Output top-N structures
     # ----------------------------------------------------------------
-    top_n = min(args.top, len(all_results))
+    top_n = min(args.top, len(ranked))
     comp  = config["composition"].replace(" ", "_")
 
     for rank in range(top_n):
-        err, sg, asgn, best_p, structure, sg_config = all_results[rank]
+        err, sg, asgn, best_p, structure, sg_config = ranked[rank][0]
         if structure is None:
             print(f"\n  [Rank {rank+1}] No valid structure obtained.")
             continue
@@ -331,6 +314,14 @@ def _cmd_run(args) -> None:
             write_poscar(structure, win_cfg, out_path)
 
     print("\n  Done.\n")
+
+
+def _run_entry_config(entry) -> dict:
+    """The full config of a `run` ranking entry."""
+    err, sg, asgn, best_p, structure, sg_config = entry
+    cfg = dict(sg_config)
+    cfg["wyckoff_sites"] = assignments_to_sites(asgn)
+    return cfg
 
 
 # ======================================================================
@@ -572,6 +563,152 @@ def _cmd_wyckoff(args) -> None:
 
 
 # ======================================================================
+# compare
+# ======================================================================
+
+def _candidate_structure(path: str, config: dict, ref, ref_cfg: dict):
+    """(parameter vector, config, space group) of a candidate. A CIF carries
+    its own assignment; a JSON record (scripts/record_impostor.py, a
+    budget-ladder result) is a parameter vector in the reference's
+    assignment, accepted only when its `published_vector`, if present, is
+    the reference's own."""
+    if path.endswith(".json"):
+        import json
+        import numpy as np
+
+        record = json.loads(Path(path).read_text())
+        pv = np.asarray(record["param_vector"], float)
+        if len(pv) != len(ref.param_vector):
+            print(f"ERROR: {path}: {len(pv)} parameters, the reference "
+                  f"{ref.label()} has {len(ref.param_vector)}"); sys.exit(1)
+        pub = record.get("published_vector")
+        if pub is not None and not np.allclose(pub, ref.param_vector, atol=1e-3):
+            print(f"ERROR: {path} was recorded against a different reference "
+                  f"vector (or assignment order) than {ref.label()}"); sys.exit(1)
+        return pv, ref_cfg, ref.spacegroup
+    other, cfg = _reference_config(config, path)
+    return other.param_vector, cfg, other.spacegroup
+
+
+def _cmd_compare(args) -> None:
+    """Bond-graph topology class and geometric differences against a reference."""
+    import json
+    from . import bond_graph as bg
+
+    config = _load_config(args.config)
+    ref, ref_cfg = _reference_config(config, args.reference)
+    cations = {e for e, q in (ref_cfg.get("ionic_charges") or {}).items() if q > 0}
+
+    def analyse(name, pv, cfg, sg):
+        st = build_structure(pv, cfg)
+        crystal = bg.Crystal(st["lattice_matrix"], st["species"], st["frac_coords"], name)
+        cut, ranges = bg.pair_cutoffs(cfg, set(st["species"]))
+        graph = bg.build_graph(crystal, cut, cations)
+        topo = bg.topology(graph, args.depth)
+        grey = bg.grey_contacts(crystal, cut, ranges)
+        return {"name": name, "sg": sg, "crystal": crystal, "cutoffs": cut, "ranges": ranges,
+                "grey": grey, "topo": topo,
+                "geo": bg.geometry(graph, topo), "objective": error_breakdown(pv, cfg)["total"]}
+
+    r = analyse(args.reference, ref.param_vector, ref_cfg, ref.spacegroup)
+    cands = [analyse(p, *_candidate_structure(p, config, ref, ref_cfg)) for p in args.candidates]
+
+    classes = {r["topo"].signature: "A"}
+    for c in cands:
+        classes.setdefault(c["topo"].signature, chr(ord("A") + len(classes)))
+
+    print(f"\n{'='*65}")
+    print(f"  COMPARE  {args.reference}")
+    print(f"{'='*65}")
+    print("  Bond cutoffs : " + "  ".join(
+        f"{'-'.join(sorted(k))} {v:g} A" for k, v in sorted(r["cutoffs"].items(), key=lambda x: sorted(x[0]))))
+    for k, (lo, hi) in sorted(r["ranges"].items(), key=lambda x: sorted(x[0])):
+        if hi > r["cutoffs"][k]:
+            print(f"  Grey band    : {'-'.join(sorted(k))} ({r['cutoffs'][k]:g}, {hi:g}] A -- another "
+                  f"constraint's cutoff counts contacts the bond graph does not")
+    print(f"  Reference    : SG {ref.spacegroup}  {ref.label()}  objective {r['objective']:.6g}")
+    print(f"\n  Topological types, class A (coordination sequence to depth {args.depth}):")
+    count = Counter(r["topo"].types)
+    names = {1: "corner", 2: "edge"}
+    for k in sorted(count, key=lambda k: r["topo"].labels[k]):
+        link = r["topo"].linkage.get(k, {})
+        ltxt = ("  shares " + ", ".join(f"{names.get(s, f'face({s})')} {v:g}" for s, v in link.items())
+                if link else "")
+        print(f"    {r['topo'].labels[k]:<18} x{count[k]:<3} CS {' '.join(map(str, k[1]))}{ltxt}")
+
+    def opt(v, fmt):
+        return format(v, fmt) if v is not None else "-".rjust(7)
+
+    def ngrey(x):
+        return sum(len(v) for v in x["grey"].values())
+
+    print(f"  Reference grey-band contacts per cell: {ngrey(r)}")
+    print(f"\n  {'candidate':<40} {'class':>5} {'objective':>10} {'vol %':>7} {'shape':>7} "
+          f"{'bond %':>7} {'angle':>7} {'grey':>5}")
+    report = []
+    for c in cands:
+        row = {"name": c["name"], "class": classes[c["topo"].signature],
+               "objective": c["objective"]}
+        vol = shape = bmax = amax = None
+        if c["sg"] == r["sg"]:
+            row["strain"] = bg.cell_strain(r["crystal"].lattice, c["crystal"].lattice)
+            vol, shape = 100 * row["strain"]["volume"], row["strain"]["shape"]
+        same_types = set(r["topo"].labels.values()) == set(c["topo"].labels.values())
+        if same_types:
+            row["tables"] = bg.compare_geometry(r["geo"], c["geo"])
+            bmax = max((x[4] for x in row["tables"]["bonds"]), default=0.0)
+            amax = max((x[4] for x in row["tables"]["angles"]), default=0.0)
+        report.append((c, row))
+        row["grey"] = {"-".join(sorted(k)): v for k, v in c["grey"].items()}
+        print(f"  {Path(c['name']).name[:40]:<40} {row['class']:>5} {c['objective']:10.4g} {opt(vol, '+7.2f')} "
+              f"{opt(shape, '7.4f')} {opt(bmax, '7.2f')} {opt(amax, '7.2f')} {ngrey(c):>5}")
+    print("  vol %, shape: Lagrangian cell strain against the reference (same space group only)."
+          "\n  bond %, angle: largest shift of a type's min/mean/max (% of the mean length; deg)."
+          "\n  grey: contacts per cell inside a grey band.")
+
+    def triple(t, fmt):
+        return "/".join(format(x, fmt) for x in t[:3])
+
+    for c, row in report:
+        print(f"\n  --- {c['name']}  (class {row['class']}) ---")
+        for pair, ds in sorted(row["grey"].items()):
+            print(f"    grey-band {pair} contacts: {' '.join(f'{d:.3f}' for d in sorted(ds))} A")
+        if row["class"] != "A":
+            for line in bg.describe_difference(r["topo"], c["topo"]):
+                print(f"    {line}")
+        if "tables" not in row:
+            continue
+        if row["class"] != "A":
+            print("    first-shell types match: geometry compared by type label")
+        if "strain" in row:
+            print("    cell strain, principal values: "
+                  + " ".join(f"{100 * x:+.2f}%" for x in row["strain"]["principal"]))
+        for cat, unit, fmt in (("bonds", "%", ".4f"), ("angles", "deg", ".2f")):
+            rows = row["tables"][cat][:args.top]
+            print(f"    {cat}, reference min/mean/max -> candidate (largest {len(rows)}):")
+            for _, key, a, b, score in rows:
+                print(f"      {key:<38} {triple(a, fmt)} -> {triple(b, fmt)}  {score:6.2f} {unit}")
+        print("    polyhedra, reference min/mean/max -> candidate:")
+        for q, key, a, b, _ in row["tables"]["polyhedra"]:
+            fmt = ".2f" if q == "sigma2" else ".4f"
+            print(f"      {key:<18} {q:<7} {triple(a, fmt)} -> {triple(b, fmt)}")
+
+    if args.json:
+        def plain(x):
+            if isinstance(x, dict):
+                return {k if isinstance(k, str) else "-".join(k): plain(v) for k, v in x.items()}
+            if isinstance(x, (list, tuple)):
+                return [plain(v) for v in x]
+            return x
+        out = {"reference": args.reference, "depth": args.depth,
+               "types": {r["topo"].labels[k]: {"count": n, "cs": list(k[1])}
+                         for k, n in count.items()},
+               "candidates": [plain(row) for _, row in report]}
+        Path(args.json).write_text(json.dumps(out, indent=1))
+        print(f"\n  JSON written: {args.json}")
+
+
+# ======================================================================
 # suggest (reserved)
 # ======================================================================
 
@@ -599,7 +736,8 @@ def main(argv=None):
     p.add_argument("--format", choices=("poscar", "cif"), default="poscar",
                    help="Output format for single-composition runs (default: poscar)")
     p.add_argument("--top", type=int, default=1,
-                   help="Write the top-N best structures (default: 1)")
+                   help="Write the top-N best structures, one per bond-graph topology "
+                        "class (default: 1)")
     p.add_argument("--verbose", action="store_true",
                    help="Print detailed error breakdown")
     p.add_argument("--seed", type=int, default=None,
@@ -641,6 +779,19 @@ def main(argv=None):
     p = sub.add_parser("wyckoff", help="list a space group's Wyckoff positions in mizuho's setting")
     p.add_argument("spacegroup", type=int)
     p.set_defaults(func=_cmd_wyckoff)
+
+    p = sub.add_parser("compare", help="bond-graph topology class and geometry of candidates "
+                                       "against a reference (diagnostic, ADR-0018)")
+    p.add_argument("config", help="YAML config: its coordination cutoffs define the bonds")
+    p.add_argument("reference", help="reference structure (CIF)")
+    p.add_argument("candidates", nargs="+",
+                   help="candidate structures: CIF, or a JSON record with a param_vector "
+                        "in the reference's assignment (tests/fixtures/impostors/*.json)")
+    p.add_argument("--depth", type=int, default=10,
+                   help="Coordination-sequence depth in bonds (default: 10)")
+    p.add_argument("--top", type=int, default=6, help="Rows per geometry table (default: 6)")
+    p.add_argument("--json", default=None, help="Also write the comparison as JSON")
+    p.set_defaults(func=_cmd_compare)
 
     p = sub.add_parser("suggest", help="(reserved) generate constraints from a reference")
     p.add_argument("reference")

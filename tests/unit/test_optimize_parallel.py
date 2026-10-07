@@ -163,7 +163,7 @@ def test_restart_workers_forced_to_one_when_actually_parallelizing(monkeypatch, 
 
     optimize_assignments_parallel(assignments_list, nacl_config, opt_cfg, max_workers=2)
 
-    for _, _, task_opt_cfg, _, _ in captured["tasks"]:
+    for _, _, task_opt_cfg, _, _, _ in captured["tasks"]:
         assert task_opt_cfg["restart_workers"] == 1
 
 
@@ -222,7 +222,7 @@ def test_restart_workers_left_untouched_when_not_parallelizing(monkeypatch, nacl
 
     optimize_assignments_parallel(assignments_list, nacl_config, opt_cfg, max_workers=1)
 
-    _, _, task_opt_cfg, _, _ = captured["tasks"][0]
+    _, _, task_opt_cfg, _, _, _ = captured["tasks"][0]
     assert task_opt_cfg["restart_workers"] == 4
 
 
