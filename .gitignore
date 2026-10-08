@@ -29,6 +29,7 @@ venv/
 # Project output
 *.vasp
 gate-results/
+runs/
 
 # Pre-packaging single-file predecessor, kept locally for reference only
 legacy/
