@@ -161,3 +161,18 @@ Read against the rules:
   selects the centres the gray band and the gates' integer-CN verdict apply to.
 - **Every x4 judgment uses five seeds** (42-46), starting with measurement 2. One seed is too thin:
   diopside's (iii) converged here and did not in ADR-0019 at the same seed and budget.
+
+## Measured: the rank spread at x1 and x4 (2026-10-14)
+
+`scripts/phase1_ladder.py rank`, seeds 42-46, rank of the published equivalence class:
+
+| mineral | classes | x1 ranks (worst) | x4 ranks (worst) | x4 time per seed |
+| --- | --- | --- | --- | --- |
+| diopside | 11,230 | 118, 92, 26, 138, 185 (185) | 120, 119, 19, 95, 144 (144) | 381-527 s |
+| adamite | 19,152 | 3074, 2891, 1576, 1230, 3129 (3129) | 1949, 2489, 1710, 1881, 1838 (2489) | 1044-1130 s |
+
+Four times the restarts narrows adamite's spread and moves neither mineral near the gate
+(`max_candidates` = 50); diopside's seed 43 gets worse. ADR-0012's remedy does not repair the
+rank: the feasibility solve is not short of restarts. The rank gate stays failing for diopside and
+xfail for adamite, and what the local-shell score cannot see is the next question.
+
