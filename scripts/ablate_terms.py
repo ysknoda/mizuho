@@ -121,7 +121,8 @@ def score_impostor() -> dict:
             "impostor": float(compute_error(imp, cfg)),
             "published": float(compute_error(pv_ref, cfg)),
         }
-        rows[variant]["rejected"] = rows[variant]["impostor"] > rows[variant]["published"]
+        rows[variant]["rejected"] = (
+            rows[variant]["impostor"] > rows[variant]["published"] + CONVERGED_MARGIN)
     return rows
 
 

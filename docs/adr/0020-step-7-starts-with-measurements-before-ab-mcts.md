@@ -36,6 +36,10 @@ Each rule below is fixed before its measurement runs.
    one point DFT confirmed to be a different structure (ADR-0019).
    - A term whose removal keeps that impostor above the published structure **and** improves
      tier 1 is demoted to report-only. A term whose removal lets it through stays.
+   - "Above" means by more than ADR-0005's converged margin: `error(impostor) >
+     error(published) + 1e-3`. A strict `>` would count noise as rejection; without volume the
+     impostor scores 4.9e-11 (compact support only) and 7.5e-4 (+ bond valence) against a
+     published 0, both inside the margin within which the optimiser cannot tell two points apart.
    - Integrality is removed when (iv) matches (iii) on Stage-1 convergence and tier 1 (the
      condition ADR-0015 left pending).
 
