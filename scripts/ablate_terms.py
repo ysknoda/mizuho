@@ -10,6 +10,8 @@ tests/integration/test_search_gates.py) under one of four objectives:
        since ADR-0020 removed the penalty, iv is the current code)
   v    iii without bond valence: whether bond valence is needed once
        volume is in (the variants above add terms cumulatively)
+  notxt the current code without the automatic T-X-T bridging band
+       (ADR-0027), its comparison run
 
 and records Stage-1 convergence, tier 1 (topology class) and tier 2
 (lattice, bounds) to <out>/<mineral>_<variant>.json.
@@ -45,7 +47,7 @@ from mizuho.optimize.endpoints import topology_key  # noqa: E402
 from mizuho.pipeline import build_sg_config  # noqa: E402
 from mizuho.structure import assignments_to_sites  # noqa: E402
 
-VARIANTS = ("i", "ii", "iii", "iv", "v")
+VARIANTS = ("i", "ii", "iii", "iv", "v", "notxt")
 BUDGET = 4
 SEED = 42
 CONVERGED_MARGIN = 1e-3
@@ -63,6 +65,8 @@ def _apply(variant: str, base: dict) -> dict:
         base.pop("volume_constraint", None)
     elif variant == "v":
         base["bond_valence"] = False
+    elif variant == "notxt":
+        base["auto_tetrahedral_bridging"] = False
     off = variant == "iv"
     for mod in (_energy, _breakdown):
         if not hasattr(mod, "_integrality_penalty"):
