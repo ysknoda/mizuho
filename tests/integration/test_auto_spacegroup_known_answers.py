@@ -33,10 +33,14 @@ EXPECTED = {
 
 # Recorded failures at the correct threshold (ADR-0005), with what was seen.
 XFAIL = {
+    "nacl": "detected P4mm (99) at 1e-3 A, re-measured 2026-10-14 (ADR-0021)",
     "cscl": "returns a band-slack distortion detected as Pmma (51); 221 never "
     "enters Phase 0's top five",
-    "si": "returns a P4/mmm (123) net whose four second neighbours sit 0.0002 A "
-    "outside the cutoff: soft CN 4.000, integer CN 2",
+    "zno": "detected Pmc2_1 (26) at 1e-3 A, re-measured 2026-10-14 (ADR-0021)",
+    "tio2": "detected Pmc2_1 (26) at 1e-3 A, re-measured 2026-10-14 (ADR-0021)",
+    "si": "detected Imma (74) at 1e-4 to 1e-1 A with integer CN 4, re-measured "
+    "2026-10-14; the former P4/mmm net with soft CN 4 at integer CN 2 is closed "
+    "by the gray band and compact support",
 }
 
 

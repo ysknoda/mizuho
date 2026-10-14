@@ -282,7 +282,7 @@ Design review of 2026-10-14; decisions in ADR-0020 to ADR-0025.
 | item | state |
 |---|---|
 | step 7 | **started at L2** (ADR-0020). Precondition restated on ADR-0019's criterion: tier 1 wherever Stage 1 converges (nine of twelve at x4). Measurements queued: term ablation (i)-(iv) on diopside, topaz, adamite; then the CONT primitive; Phase 1 feasibility ladder x1/x2/x4 in parallel |
-| automatic space-group search | the 2026-10-01 result above (none of five reaches its known answer) disagrees with the test file, which marks only `cscl` and `si` xfail. To be re-run on current code; if any of the five misses, mode B becomes explicit (ADR-0021) |
+| automatic space-group search | re-measured on current code (seed 42, detected at 1e-3 A): NaCl -> 99, CsCl -> 51, ZnO -> 26, TiO2 -> 26, Si -> 74 (integer CN 4). None reaches its known answer; all five recorded xfail. By ADR-0021's rule mode B is now explicit (`mode: auto_spacegroup`) |
 | adamite | reference replaced by AFLOW's PBE relaxation of ICSD 34868, H located; fixture re-measured, H modelled explicitly, charge term back on, objective 0 at the reference; impostor records retired (ADR-0025) |
 | Z reporting, `suggest` | decided (ADR-0022, ADR-0023), implemented after the step-7 measurements |
 | anion-centred gray band | closed, report-only (ADR-0024) |

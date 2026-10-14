@@ -34,8 +34,10 @@ counts as a pass already (ADR-0010), so a miss on Si, ZnO or TiO2 is not a polyt
 
 ## Applied (2026-10-14)
 
-Re-measured on the current code: NaCl is detected as P4mm (99) at 1e-3 A, against 225, as on
-2026-10-01; CsCl misses as its xfail records. The rule applies, so mode B is explicit
+Re-measured on the current code (seed 42, detected at 1e-3 A): NaCl P4mm (99), CsCl Pmma (51),
+ZnO Pmc2_1 (26), TiO2 Pmc2_1 (26), Si Imma (74). None reaches its known answer; all five are
+recorded xfail. Si now keeps integer CN 4, so the former mechanism (a P4/mmm net at soft CN 4 and
+integer CN 2) is closed, but the group is still wrong. The rule applies, so mode B is explicit
 (`mizuho/cli.py`'s `_check_mode`, before any composition mode, all of which search space groups
 when none is given). The five fixtures in `tests/fixtures/auto/` opt in with
 `mode: auto_spacegroup`.
