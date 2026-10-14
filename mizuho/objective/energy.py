@@ -15,7 +15,7 @@ from ..lattice import (
 from ..structure import build_structure
 from .bond_valence import bond_valence_term
 from .penalties import (
-    _gray_band_penalty, _integrality_applies, _integrality_penalty, reject_removed_keys,
+    _gray_band_penalty, _integrality_applies, reject_removed_keys,
     _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
@@ -377,16 +377,15 @@ def compute_error(param_vector: np.ndarray, config: dict,
         dm = img_all[np.ix_(ci_arr, ni_arr)].copy()       # (Nc, Nn, 27)
         dm[ci_arr[:, None] == ni_arr[None, :], ZERO_SHIFT_INDEX] = np.inf
 
-        # ADR-0007: a cation's soft count must also sit near an integer,
-        # or two neighbours parked at the cutoff (0.5 each) pass for one.
+        # A cation's shell must not hold atoms parked at the cutoff, where
+        # they count fractionally (ADR-0014, ADR-0015).
         integral = _integrality_applies(ce, charges)
         raw_cn = 0.0
         for li in range(len(ci_arr)):
             cn_i = _soft_coordination_number(dm[li].ravel(), cutoff, width)
             p    = _penalty(cn_i, cnmin, cnmax, w, scale=scale)
             if integral:
-                p += _integrality_penalty(cn_i, w, scale)
-                # Cation-centred only for now; the version including anion
+                # Cation-centred only (ADR-0024); the version including anion
                 # centres is reported by breakdown.py, not added here
                 # (design review 2026-10-01: oxide-only references cannot
                 # yet decide whether anion shells should be held to it).

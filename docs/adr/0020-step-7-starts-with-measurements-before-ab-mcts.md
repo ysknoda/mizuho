@@ -151,3 +151,13 @@ Read against the rules:
   structure needs the DFT spot-check of this ADR.
 - Measurement 2 (CONT) runs on adamite and topaz, the two that fail Stage 1 under (iii).
 
+## Decided after the ablation (2026-10-14)
+
+- **The integrality penalty is removed** (`objective/energy.py`, `breakdown.py`, `energy_jax.py`).
+  The ablation's rule did not decide it: (iv) improved diopside's tier 1 rather than matching
+  (iii), and changed nothing on topaz or adamite. Removed because no mineral got worse and,
+  since ADR-0015, the penalty can act only where the gray band already charges. Without
+  integrality, topaz's round-2 impostor still scores 6.8e-2. `_integrality_applies` stays: it
+  selects the centres the gray band and the gates' integer-CN verdict apply to.
+- **Every x4 judgment uses five seeds** (42-46), starting with measurement 2. One seed is too thin:
+  diopside's (iii) converged here and did not in ADR-0019 at the same seed and budget.

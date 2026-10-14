@@ -36,25 +36,16 @@ def _penalty(v, vmin, vmax, w=1.0, scale=1.0) -> float:
     return 0.0
 
 
-# ADR-0007: a cation-centred soft coordination number may stray at most
-# this far from an integer before the integrality penalty applies. Chosen
-# from data: worst reference 0.0179 (adamite Zn), mildest impostor 0.1865
-# (diopside Ca).
-INTEGRALITY_CEILING = 0.05
-
-
 def _integrality_applies(center: str, charges: Dict[str, float]) -> bool:
-    """Integrality binds cation-centred and covalent (uncharged) centres.
+    """Whether a centre's coordination number is held to an integer:
+    cation-centred and covalent (uncharged) centres. These get the gray-band
+    penalty and are judged by their integer count in the gates (ADR-0007).
     Anion-centred counts are exempt: the number of cations around an anion
     is not a discrete polyhedron (diopside's O deviates 0.127 at its own
-    published structure, ADR-0007)."""
+    published structure). The integrality penalty itself was removed by
+    ADR-0020: outside the gray band the soft count is integral (ADR-0015),
+    inside it the gray band already charges."""
     return charges.get(center, 0) >= 0
-
-
-def _integrality_penalty(cn: float, w: float, scale: float) -> float:
-    """Dead-band penalty on |CN - round(CN)|, in the parent coordination
-    constraint's weight and scale (so it adds no free parameter)."""
-    return _penalty(abs(cn - round(cn)), 0.0, INTEGRALITY_CEILING, w, scale=scale)
 
 
 # Half-width of the gray band around a coordination cutoff, in smoothing

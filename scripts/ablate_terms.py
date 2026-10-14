@@ -6,7 +6,8 @@ tests/integration/test_search_gates.py) under one of four objectives:
   i    compact support only: no bond-valence term, no volume constraint
   ii   i + bond valence (ADR-0016)
   iii  ii + volume (ADR-0017): the current code
-  iv   iii without the integrality penalty (ADR-0015's pending removal)
+  iv   iii without the integrality penalty (ADR-0015's pending removal;
+       since ADR-0020 removed the penalty, iv is the current code)
   v    iii without bond valence: whether bond valence is needed once
        volume is in (the variants above add terms cumulatively)
 
@@ -64,6 +65,8 @@ def _apply(variant: str, base: dict) -> dict:
         base["bond_valence"] = False
     off = variant == "iv"
     for mod in (_energy, _breakdown):
+        if not hasattr(mod, "_integrality_penalty"):
+            continue  # removed by ADR-0020: variant iv is now the current code
         if not hasattr(mod, "_integrality_penalty_original"):
             mod._integrality_penalty_original = mod._integrality_penalty
         mod._integrality_penalty = (

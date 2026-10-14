@@ -59,3 +59,6 @@ on top of it.
 
 The integrality penalty's removal is decided by ADR-0020's term ablation: configuration (iv), the
 current code without it, against (iii). It is removed if Stage-1 convergence and tier 1 match.
+
+The ablation decided it: the integrality penalty is removed (ADR-0020's "Decided after the
+ablation").
