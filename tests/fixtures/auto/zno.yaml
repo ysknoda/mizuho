@@ -1,5 +1,7 @@
 # ZnO, automatic space-group search. Expected detected group 186 or its
 # polytype 216 (zinc blende).
+# Opt-in required since ADR-0021.
+mode: auto_spacegroup
 composition: ZnO
 ionic_charges: {Zn: 2, O: -2}
 charge_tolerance_min: 0

@@ -153,14 +153,19 @@ form is gone.
 
 ## How it works
 
-Two execution modes, selected by whether `spacegroup` is given (`mode` may
-also be set explicitly to `single_spacegroup` / `auto_spacegroup` for
-clarity; it must then agree with whether `spacegroup` is present):
+Two execution modes. Mode A runs when `spacegroup` is given. Mode B is
+experimental and opt-in: it runs only with `mode: auto_spacegroup` and
+`spacegroup` omitted, because its known-answer tests do not pass yet (NaCl is
+detected as P4mm, 99, instead of Fm-3m, 225;
+[ADR-0021](docs/adr/0021-auto-spacegroup-search-stays-default-only-if-it-reaches-known-answers.md)).
+A config with neither is rejected. `mode: single_spacegroup` may spell out
+mode A; `mode` must agree with whether `spacegroup` is present:
 
 1. **Mode A -- single space group** (`spacegroup: <1-230>`): run the
    Wyckoff-assignment search and numerical optimisation directly against
    the given space group.
-2. **Mode B -- automatic space-group search** (`spacegroup` omitted): a
+2. **Mode B -- automatic space-group search, experimental**
+   (`mode: auto_spacegroup`, `spacegroup` omitted): a
    hierarchical search over crystal system -> point group ->
    symmorphic/non-symmorphic -> individual space group selects promising
    candidates before handing each one to mode A's pipeline. Selection uses
@@ -202,8 +207,8 @@ commonly used top-level keys are:
 | Key | Purpose |
 |---|---|
 | `composition` | Target chemical formula, e.g. `"BaTiO3"` |
-| `spacegroup` | Space-group number (1-230); omit for auto-search (mode B) |
-| `mode` | Optional explicit `single_spacegroup` / `auto_spacegroup`; must agree with whether `spacegroup` is set |
+| `spacegroup` | Space-group number (1-230); required unless `mode: auto_spacegroup` |
+| `mode` | `auto_spacegroup` opts in to the experimental automatic search (mode B, `spacegroup` omitted); `single_spacegroup` is an optional spelling of mode A |
 | `ionic_charges` | `{element: charge}` for ionic-mode searches |
 | `lattice_bounds` | Per-axis `[min, max]` bounds for lattice constants |
 | `bond_constraints` | List of `{atom1, atom2, distance_min, distance_max, weight}` |

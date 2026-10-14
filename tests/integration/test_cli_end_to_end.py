@@ -98,6 +98,39 @@ def test_cli_mode_conflicting_with_spacegroup_is_rejected(tmp_path):
     assert "auto_spacegroup" in result.stdout
 
 
+def test_cli_without_spacegroup_requires_opting_in(tmp_path):
+    """ADR-0021: the automatic space-group search has not reached its known
+    answers, so omitting "spacegroup" is an error unless the config opts in
+    with mode: auto_spacegroup."""
+    with open(FIXTURES_DIR / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    del config["spacegroup"]
+    config_path = tmp_path / "nacl_no_spacegroup.yaml"
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(config, fh)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "mizuho", "run", str(config_path)],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0
+    assert "mode: auto_spacegroup" in result.stdout
+    assert "adr/0021" in result.stdout
+
+
+def test_cli_auto_spacegroup_opt_in_warns(tmp_path):
+    """The opt-in passes the mode check and prints that the search is
+    experimental. Checked on _check_mode alone: a full automatic search
+    takes minutes."""
+    from mizuho.cli import AUTO_SPACEGROUP_WARNING, _check_mode
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _check_mode({"mode": "auto_spacegroup", "composition": "NaCl"})
+    assert AUTO_SPACEGROUP_WARNING in buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Subcommands (docs/adr/0013-cli-subcommands.md)
 # ---------------------------------------------------------------------------

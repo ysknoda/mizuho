@@ -31,3 +31,12 @@ counts as a pass already (ADR-0010), so a miss on Si, ZnO or TiO2 is not a polyt
 
 - L1 of step 7 (ADR-0020) starts only after this rule has been applied.
 - If Mode B becomes explicit, the README's description of it moves under an experimental heading.
+
+## Applied (2026-10-14)
+
+Re-measured on the current code: NaCl is detected as P4mm (99) at 1e-3 A, against 225, as on
+2026-10-01; CsCl misses as its xfail records. The rule applies, so mode B is explicit
+(`mizuho/cli.py`'s `_check_mode`, before any composition mode, all of which search space groups
+when none is given). The five fixtures in `tests/fixtures/auto/` opt in with
+`mode: auto_spacegroup`.
+

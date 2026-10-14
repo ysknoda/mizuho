@@ -1,4 +1,6 @@
 # NaCl, automatic space-group search. Expected detected group 225.
+# Opt-in required since ADR-0021.
+mode: auto_spacegroup
 composition: NaCl
 ionic_charges: {Na: 1, Cl: -1}
 charge_tolerance_min: 0

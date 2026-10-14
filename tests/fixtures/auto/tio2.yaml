@@ -1,5 +1,7 @@
 # TiO2, automatic space-group search. Expected detected group 136 (rutile)
 # or its polytype 141 (anatase).
+# Opt-in required since ADR-0021.
+mode: auto_spacegroup
 composition: TiO2
 ionic_charges: {Ti: 4, O: -2}
 charge_tolerance_min: 0

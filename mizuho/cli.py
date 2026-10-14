@@ -60,6 +60,40 @@ def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
               f"(per-element ratios: {ratios})."); sys.exit(1)
 
 
+AUTO_SPACEGROUP_WARNING = (
+    "  WARNING: the automatic space-group search is experimental. Its "
+    "known-answer tests\n  (NaCl -> 225 among them) do not pass; check the "
+    "detected space group of\n  every result (docs/adr/0021).")
+
+
+def _check_mode(config: dict) -> None:
+    """Whether a config may run, and in which space-group mode.
+
+    "mode" must agree with whether "spacegroup" is present, so a config
+    can't silently ask for one mode while supplying inputs for the other.
+    The automatic space-group search is opt-in: it has not reached its
+    known answers, so a config that simply omits "spacegroup" is rejected
+    rather than handed a plausible structure in the wrong group
+    (docs/adr/0021). Applies to every composition mode, all of which search
+    space groups when none is given."""
+    sg_given = config.get("spacegroup")
+    mode = config.get("mode")
+    if mode is not None and mode not in ("single_spacegroup", "auto_spacegroup"):
+        print(f"ERROR: mode must be 'single_spacegroup' or 'auto_spacegroup', "
+              f"got {mode!r}."); sys.exit(1)
+    if mode == "single_spacegroup" and sg_given is None:
+        print("ERROR: mode: single_spacegroup requires 'spacegroup' to be set."); sys.exit(1)
+    if mode == "auto_spacegroup" and sg_given is not None:
+        print("ERROR: mode: auto_spacegroup requires 'spacegroup' to be "
+              "omitted (it selects one automatically)."); sys.exit(1)
+    if sg_given is None and mode != "auto_spacegroup":
+        print("ERROR: no 'spacegroup' given. The automatic space-group search "
+              "does not yet reach its known answers (docs/adr/0021); set "
+              "'spacegroup', or opt in with 'mode: auto_spacegroup'."); sys.exit(1)
+    if sg_given is None:
+        print(AUTO_SPACEGROUP_WARNING)
+
+
 def _cmd_run(args) -> None:
     """`mizuho run`: predict structures (docs/adr/0013-cli-subcommands.md)."""
     # ----------------------------------------------------------------
@@ -86,6 +120,8 @@ def _cmd_run(args) -> None:
     #   2. "composition_pool": [...]  -> user-supplied pool (legacy)
     #   3. "composition": "..."       -> single composition (original)
     # ================================================================
+    _check_mode(config)
+
     auto_comp = config.get("auto_composition", False)
     pool      = config.get("composition_pool")
 
@@ -112,15 +148,6 @@ def _cmd_run(args) -> None:
     # is present, so a config can't silently ask for one mode while
     # supplying inputs for the other.
     sg_given  = config.get("spacegroup")   # None or int
-    mode      = config.get("mode")
-    if mode is not None and mode not in ("single_spacegroup", "auto_spacegroup"):
-        print(f"ERROR: mode must be 'single_spacegroup' or 'auto_spacegroup', "
-              f"got {mode!r}."); sys.exit(1)
-    if mode == "single_spacegroup" and sg_given is None:
-        print("ERROR: mode: single_spacegroup requires 'spacegroup' to be set."); sys.exit(1)
-    if mode == "auto_spacegroup" and sg_given is not None:
-        print("ERROR: mode: auto_spacegroup requires 'spacegroup' to be "
-              "omitted (it selects one automatically)."); sys.exit(1)
     auto_mode = (sg_given is None)
 
     # `wyckoff_assignment` (optional): a user-supplied, already-known
@@ -147,7 +174,7 @@ def _cmd_run(args) -> None:
     print(f"  Crystal Structure Predictor v6")
     print(f"  Composition  : {config['composition']}")
     if auto_mode:
-        print(f"  Space group  : AUTO (Phase 0 screening active)")
+        print(f"  Space group  : AUTO, experimental (Phase 0 screening active)")
     else:
         sg = int(sg_given)
         if sg not in WYCKOFF_DB:
