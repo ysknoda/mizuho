@@ -20,6 +20,7 @@ from .objective.breakdown import error_breakdown, print_error_breakdown
 from .objective.energy import compute_error
 from .lattice import CRYSTAL_SYSTEM_OF_SG, get_lattice_system
 from .optimize.driver import optimize_one_assignment
+from .optimize.endpoints import grouping_settings
 from .pipeline import (
     _run_auto_composition_mode, _run_composition_pool, build_sg_config,
     merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
@@ -31,7 +32,7 @@ from .normalizer import (
 )
 from .objective.penalties import reject_removed_keys
 from .structure import assignments_to_sites, build_structure, resolve_fixed_assignment
-from .symmetry import SUCCESS_TOLERANCE, hall_number_of_sg
+from .symmetry import SUCCESS_TOLERANCE, hall_number_of_sg, point_group_order
 
 
 def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
@@ -60,10 +61,43 @@ def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
               f"(per-element ratios: {ratios})."); sys.exit(1)
 
 
+SG_STRATEGIES = ("hierarchical", "flat", "exhaustive")
+
+
+def _sg_strategy(config: dict) -> str:
+    strategy = (config.get("spacegroup_search") or {}).get("strategy", "hierarchical")
+    if strategy not in SG_STRATEGIES:
+        print(f"ERROR: spacegroup_search.strategy must be one of {list(SG_STRATEGIES)}, "
+              f"got {strategy!r}."); sys.exit(1)
+    return strategy
+
+
+def _exhaustive_spacegroups(config: dict) -> list:
+    """The groups the exhaustive strategy runs: every group in mizuho's
+    tables, or `spacegroup_search.spacegroups` when the config names a
+    subset (a partial or resumed run)."""
+    named = (config.get("spacegroup_search") or {}).get("spacegroups")
+    if named is None:
+        return sorted(WYCKOFF_DB)
+    bad = [g for g in named if g not in WYCKOFF_DB]
+    if bad:
+        print(f"ERROR: spacegroup_search.spacegroups names unknown groups {bad}."); sys.exit(1)
+    return sorted(set(int(g) for g in named))
+
+
+def _ranking_key(error: float, sg: int, threshold: float) -> tuple:
+    """Global ranking order (ADR-0026): entries at or below the converged
+    threshold first, highest point-group order among them first, then error;
+    every other entry by error alone."""
+    if error <= threshold:
+        return (0, -point_group_order(sg), error)
+    return (1, 0, error)
+
+
 AUTO_SPACEGROUP_WARNING = (
     "  WARNING: the automatic space-group search is experimental. Its "
     "known-answer tests\n  (NaCl -> 225 among them) do not pass; check the "
-    "detected space group of\n  every result (docs/adr/0021).")
+    "detected space group of\n  every result (docs/adr/0021, 0026).")
 
 
 def _check_mode(config: dict) -> None:
@@ -91,6 +125,7 @@ def _check_mode(config: dict) -> None:
               "does not yet reach its known answers (docs/adr/0021); set "
               "'spacegroup', or opt in with 'mode: auto_spacegroup'."); sys.exit(1)
     if sg_given is None:
+        _sg_strategy(config)
         print(AUTO_SPACEGROUP_WARNING)
 
 
@@ -201,7 +236,14 @@ def _cmd_run(args) -> None:
     # ================================================================
     # Phase 0: automatic space-group screening (auto mode only)
     # ================================================================
-    if auto_mode:
+    if auto_mode and _sg_strategy(config) == "exhaustive":
+        # Every space group, each through mode A's pipeline (ADR-0026): no
+        # Phase 0 to miss the right one. A group no assignment of the
+        # composition fits is skipped by Phase 1 in milliseconds.
+        top_sgs = _exhaustive_spacegroups(config)
+        print(f"\n[Phase 0] Exhaustive: {len(top_sgs)} space group(s), each "
+              f"searched as in mode A.")
+    elif auto_mode:
         print("\n[Phase 0] Automatic space-group search ...")
         sg_search_cfg = config.get("spacegroup_search", {})
         top_k         = sg_search_cfg.get("top_sg_count", 5)
@@ -294,7 +336,11 @@ def _cmd_run(args) -> None:
     # ----------------------------------------------------------------
     # Global ranking
     # ----------------------------------------------------------------
-    all_results.sort(key=lambda x: x[0])
+    # Entries that satisfy the constraints rank by symmetry first (ADR-0026):
+    # a structure and its distortions in subgroups all reach zero error,
+    # and the highest group among them is the one ADR-0010 calls the answer.
+    threshold = grouping_settings(opt_cfg).zero_error_threshold
+    all_results.sort(key=lambda x: _ranking_key(x[0], x[1], threshold))
     # One row per bond-graph topology class: entries that reached the same
     # class are one structure (ADR-0019); "Same" counts the merged ones.
     ranked = merge_same_topology(all_results, lambda e: e[3], _run_entry_config)

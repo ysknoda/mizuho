@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -129,6 +130,66 @@ def test_cli_auto_spacegroup_opt_in_warns(tmp_path):
     with contextlib.redirect_stdout(buf):
         _check_mode({"mode": "auto_spacegroup", "composition": "NaCl"})
     assert AUTO_SPACEGROUP_WARNING in buf.getvalue()
+
+
+def test_exhaustive_strategy_runs_every_group_or_the_named_subset():
+    """ADR-0026: `spacegroup_search.strategy: exhaustive` runs every group in
+    mizuho's tables, or the subset `spacegroups` names."""
+    from mizuho.cli import _exhaustive_spacegroups
+    from mizuho.data import WYCKOFF_DB
+
+    assert _exhaustive_spacegroups({}) == sorted(WYCKOFF_DB)
+    assert len(_exhaustive_spacegroups({})) == 230
+    cfg = {"spacegroup_search": {"strategy": "exhaustive", "spacegroups": [225, 99, 225]}}
+    assert _exhaustive_spacegroups(cfg) == [99, 225]
+
+
+def test_unknown_spacegroup_strategy_is_rejected(tmp_path):
+    with open(FIXTURES_DIR / "auto" / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    config["spacegroup_search"] = {"strategy": "everything"}
+    config_path = tmp_path / "nacl_bad_strategy.yaml"
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(config, fh)
+    result = subprocess.run(
+        [sys.executable, "-m", "mizuho", "run", str(config_path)],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0
+    assert "exhaustive" in result.stdout
+
+
+def test_ranking_prefers_the_higher_group_among_satisfied_entries():
+    """ADR-0026: at or below the threshold, symmetry first (Fm-3m 48 over
+    P4mm 8) even against a lower error; above it, error alone."""
+    from mizuho.cli import _ranking_key
+
+    entries = [(1e-12, 99), (0.0, 1), (5e-4, 225), (0.02, 225), (0.01, 99)]
+    order = sorted(entries, key=lambda e: _ranking_key(e[0], e[1], 1e-3))
+    assert order == [(5e-4, 225), (1e-12, 99), (0.0, 1), (0.01, 99), (0.02, 225)]
+
+
+@pytest.mark.slow
+def test_exhaustive_nacl_over_99_and_225_returns_fm3m(tmp_path):
+    """Restricted to P4mm and Fm-3m, the exhaustive strategy's answer is
+    detected as Fm-3m (225): measured 2026-10-14, error 0 in 225 against
+    0.036 at best in 99."""
+    from mizuho.io.cif import read_cif
+    from mizuho.symmetry import SUCCESS_TOLERANCE, detect_spacegroup
+
+    with open(FIXTURES_DIR / "auto" / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    config["spacegroup_search"] = {"strategy": "exhaustive", "spacegroups": [99, 225]}
+    config_path = tmp_path / "nacl_exhaustive.yaml"
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(config, fh)
+    out = tmp_path / "nacl.cif"
+    result = subprocess.run(
+        [sys.executable, "-m", "mizuho", "run", str(config_path), "--format", "cif",
+         "--output", str(out), "--seed", "42"],
+        capture_output=True, text=True, timeout=3600)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
+    lat, frac, species = read_cif(out).expand()
+    assert detect_spacegroup(lat, frac, species, SUCCESS_TOLERANCE)[0] == 225
 
 
 # ---------------------------------------------------------------------------
