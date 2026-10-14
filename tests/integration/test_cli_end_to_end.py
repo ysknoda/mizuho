@@ -138,10 +138,46 @@ def test_exhaustive_strategy_runs_every_group_or_the_named_subset():
     from mizuho.cli import _exhaustive_spacegroups
     from mizuho.data import WYCKOFF_DB
 
-    assert _exhaustive_spacegroups({}) == sorted(WYCKOFF_DB)
-    assert len(_exhaustive_spacegroups({})) == 230
-    cfg = {"spacegroup_search": {"strategy": "exhaustive", "spacegroups": [225, 99, 225]}}
-    assert _exhaustive_spacegroups(cfg) == [99, 225]
+    from mizuho.symmetry import point_group_order
+
+    groups = _exhaustive_spacegroups({})
+    assert sorted(groups) == sorted(WYCKOFF_DB) and len(groups) == 230
+    # Highest point-group order first, so a partial run covers those first.
+    orders = [point_group_order(g) for g in groups]
+    assert orders == sorted(orders, reverse=True) and orders[0] == 48 and groups[-1] == 1
+    cfg = {"spacegroup_search": {"strategy": "exhaustive", "spacegroups": [99, 225, 99]}}
+    assert _exhaustive_spacegroups(cfg) == [225, 99]
+
+
+def test_exhaustive_record_round_trips(tmp_path):
+    """ADR-0026: each finished group is recorded, and a resumed run rebuilds
+    the same ranking entries from the record."""
+    import numpy as np
+    from mizuho.cli import _append_sg_record, _entries_from_record, _read_sg_record
+    from mizuho.pipeline import build_sg_config
+    from mizuho.structure import (
+        assignments_to_sites, build_structure, resolve_fixed_assignment,
+    )
+
+    with open(FIXTURES_DIR / "auto" / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    sg_config = build_sg_config(config, 225)
+    asgn = resolve_fixed_assignment(
+        225, [{"element": "Na", "letter": "a"}, {"element": "Cl", "letter": "b"}])
+    p = np.array([5.64])
+    cfg = dict(sg_config, wyckoff_sites=assignments_to_sites(asgn))
+    row = (0.0, 225, asgn, p, build_structure(p, cfg), sg_config)
+    path = tmp_path / "record.jsonl"
+    _append_sg_record(path, 225, [row], 1.0)
+    _append_sg_record(path, 99, [], 0.5)
+
+    done = _read_sg_record(path)
+    assert set(done) == {225, 99} and done[99] == []
+    assert done[225][0]["detected_sg"] == 225
+    rebuilt = _entries_from_record(225, done[225], sg_config)[0]
+    assert rebuilt[0] == 0.0 and rebuilt[1] == 225
+    np.testing.assert_allclose(rebuilt[3], p)
+    assert [a.entry.letter for a in rebuilt[2]] == ["a", "b"]
 
 
 def test_unknown_spacegroup_strategy_is_rejected(tmp_path):

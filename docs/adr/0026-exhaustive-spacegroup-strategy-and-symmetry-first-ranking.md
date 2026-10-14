@@ -8,9 +8,17 @@ miss is a group Phase 0 chose. Mode A, given the right group, does not have that
 
 - **`spacegroup_search.strategy: exhaustive`** runs every one of the 230 groups through mode A's
   pipeline: Phase 1, Phase 2, supergroup promotion (ADR-0010) and one global ranking.
-  `spacegroup_search.spacegroups` restricts it to a named subset, for a partial or resumed run. A
-  group that no assignment of the composition fits is skipped by Phase 1 in milliseconds. It
-  needs `mode: auto_spacegroup` like the other strategies (ADR-0021).
+  `spacegroup_search.spacegroups` restricts it to a named subset. A group that no assignment of
+  the composition fits is skipped by Phase 1 in milliseconds. It needs `mode: auto_spacegroup`
+  like the other strategies (ADR-0021).
+- **Groups run from the highest point-group order down**, so a partial run has covered the groups
+  the answer is most likely in.
+- **`spacegroup_search.record: path.jsonl` records each finished group** (every Phase 2 entry's
+  assignment, error, parameters, topology class and detected group) and a run with an existing
+  record resumes after its last finished group. A first NaCl run over all 230 groups reached group
+  16 of 230 in 1 h 40 min, about 6 min a group (P2/m alone has 5,048 assignments, 50 optimised),
+  and was lost to a container restart; without a record a run of a day cannot survive one.
+  `--workers N` (Phase 2's `parallel.candidate_workers`) spreads a group's candidates over cores.
 - **Among entries that satisfy the constraints, the highest symmetry ranks first.** The global
   ranking puts entries at or below `optimization.topology_grouping.zero_error_threshold` first,
   ordered by point-group order (Fm-3m 48, P4mm 8, P1 1) and then by error. Every other entry

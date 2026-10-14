@@ -221,7 +221,7 @@ commonly used top-level keys are:
 | `angle_constraints` | List of `{atom_center, atom_neighbor, angle_min, angle_max, weight, exclude_neighbor_pairs}` |
 | `coordination_constraints` | List of `{center_atom, neighbor_atom, cn_min, cn_max, cutoff_distance}` |
 | `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle |
-| `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening, `strategy: exhaustive` (with optional `spacegroups`) for all 230 groups |
+| `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening, `strategy: exhaustive` (optional `spacegroups`, and `record: file.jsonl` to record each group and resume) for all 230 groups |
 | `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ...; `topology_grouping` (see below) |
 | `auto_composition` | Set `true` for fully automatic composition + structure discovery |
 | `composition_pool` | List of composition strings to search over |
