@@ -7,6 +7,8 @@ tests/integration/test_search_gates.py) under one of four objectives:
   ii   i + bond valence (ADR-0016)
   iii  ii + volume (ADR-0017): the current code
   iv   iii without the integrality penalty (ADR-0015's pending removal)
+  v    iii without bond valence: whether bond valence is needed once
+       volume is in (the variants above add terms cumulatively)
 
 and records Stage-1 convergence, tier 1 (topology class) and tier 2
 (lattice, bounds) to <out>/<mineral>_<variant>.json.
@@ -42,7 +44,7 @@ from mizuho.optimize.endpoints import topology_key  # noqa: E402
 from mizuho.pipeline import build_sg_config  # noqa: E402
 from mizuho.structure import assignments_to_sites  # noqa: E402
 
-VARIANTS = ("i", "ii", "iii", "iv")
+VARIANTS = ("i", "ii", "iii", "iv", "v")
 BUDGET = 4
 SEED = 42
 CONVERGED_MARGIN = 1e-3
@@ -58,6 +60,8 @@ def _apply(variant: str, base: dict) -> dict:
         base["bond_valence"] = False
     elif variant == "ii":
         base.pop("volume_constraint", None)
+    elif variant == "v":
+        base["bond_valence"] = False
     off = variant == "iv"
     for mod in (_energy, _breakdown):
         if not hasattr(mod, "_integrality_penalty_original"):

@@ -32,7 +32,8 @@ Each rule below is fixed before its measurement runs.
 1. **Term ablation.** x4, seed 42, published assignment fixed; diopside, topaz, adamite. Four
    configurations: (i) compact support only (ADR-0015), (ii) + bond valence (ADR-0016),
    (iii) + volume (ADR-0017; the current code), (iv) the current code without the integrality
-   penalty. Measured: Stage-1 convergence, tier 1, and the score of topaz's round-2 impostor, the
+   penalty, (v) the current code without bond valence (added once (i)-(iii) showed volume alone
+   rejects the impostor, so bond valence's removal had to be measured with volume in). Measured: Stage-1 convergence, tier 1, and the score of topaz's round-2 impostor, the
    one point DFT confirmed to be a different structure (ADR-0019).
    - A term whose removal keeps that impostor above the published structure **and** improves
      tier 1 is demoted to report-only. A term whose removal lets it through stays.
