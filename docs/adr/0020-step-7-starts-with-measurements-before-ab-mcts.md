@@ -176,3 +176,35 @@ Four times the restarts narrows adamite's spread and moves neither mineral near 
 rank: the feasibility solve is not short of restarts. The rank gate stays failing for diopside and
 xfail for adamite, and what the local-shell score cannot see is the next question.
 
+## Measured: the CONT primitive (2026-10-14)
+
+`scripts/measure_cont.py`, current code (integrality removed), published assignment fixed, seeds
+42-46, each strategy given the evaluations the independent x4 run used (336k-419k). Error after
+Stage 2; S1 = Stage 1 converged, T1 = tier 1; evaluations until first within the margin.
+
+| mineral, seed | independent (current) | CONT |
+| --- | --- | --- |
+| adamite 42 | 1.4e-2 | 0, S1, other class, 152k |
+| adamite 43 | 3.6e-13, S1, other class | 1.4e-2 |
+| adamite 44 | 3.1e-2 | 5.7e-5, S1, other class, 391k |
+| adamite 45 | 1.5e-2 | 6.1e-3 |
+| adamite 46 | 2.6e-14, S1, other class, 289k | 0, S1, other class, 45k |
+| topaz 42 | 4.2e-2 | 0, S1, other class, 264k |
+| topaz 43 | 2.2e-2 | 0, S1, other class, 89k |
+| topaz 44 | **0, S1, T1**, 158k | 0, S1, other class, 108k |
+| topaz 45 | 2.9e-3 | 0, S1, other class, 42k |
+| topaz 46 | 1.3e-14, S1, other class | 0, S1, other class, 339k |
+| **total** | S1 4 / 10, **T1 1 / 10** | S1 8 / 10, **T1 0 / 10** |
+
+- **By this ADR's measure CONT does not win**: tier 1 is 0 of 10 against 1 of 10. AB-MCTS is
+  not built.
+- CONT converges twice as often and usually sooner, and always into another class: resuming the
+  best x1 point deepens whichever basin the x1 restarts found best, and that basin is another
+  class's. Independent restarts are more diverse; the one tier-1 pass is theirs.
+- `cont_warm` equalled `cont_cold` on every seed: the best x1 restart had already met its own
+  stopping criteria, so carrying its state over added nothing.
+- **What blocks tier 1 on these two minerals is no longer reaching zero error but the zero-error
+  points of other classes**: 12 of the 13 converged end points are another class. Whether they
+  are other structures (topaz round 2 was; diopside's were not, ADR-0019) is the DFT spot-check's
+  question, and what separates them is the objective's.
+
