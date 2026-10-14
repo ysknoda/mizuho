@@ -8,7 +8,9 @@ import sys
 from typing import Dict, List
 
 from .composition import _all_charges_zero, discover_compositions, parse_composition
-from .config import _lattice_bounds_for_system, augment_coupling_constraints
+from .config import (
+    _lattice_bounds_for_system, augment_coupling_constraints, augment_tetrahedral_bridging,
+)
 from .data import WYCKOFF_DB
 from .geometry import precompute_letter_feasibility, rank_by_feasibility_staged
 from .io.poscar import write_poscar
@@ -43,7 +45,7 @@ def build_sg_config(base_config: dict, sg: int, composition: str = None) -> dict
         sg_config["composition"] = composition
     sg_config["lattice_bounds"] = _lattice_bounds_for_system(
         base_config.get("lattice_bounds", {}), CRYSTAL_SYSTEM_OF_SG.get(sg, "triclinic"))
-    return augment_coupling_constraints(sg_config)
+    return augment_tetrahedral_bridging(augment_coupling_constraints(sg_config))
 
 
 def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):

@@ -134,6 +134,83 @@ def _max_bond_distance_for(element: str, bond_constraints: list,
     return best
 
 
+# Bridging angle between two tetrahedra of high-valence cations (Si, Ge,
+# P, As(V), S(VI), ...): they share corners only, and the T-X-T angle lies
+# between 120 and 180 deg (Liebau, Structural Chemistry of Silicates, 1985;
+# citation to be confirmed). ADR-0027.
+TETRAHEDRAL_BRIDGING_RANGE = (120.0, 180.0)
+TETRAHEDRAL_MIN_VALENCE = 4
+
+
+def augment_tetrahedral_bridging(config: dict) -> dict:
+    """Auto-inject an anion-centred angle constraint holding the T-X-T
+    angle to TETRAHEDRAL_BRIDGING_RANGE, for every anion X that two or more
+    tetrahedral high-valence cations may share (ADR-0027).
+
+    A cation T qualifies when its formal charge is at least
+    TETRAHEDRAL_MIN_VALENCE and a coordination constraint cites its
+    coordination to X as exactly 4 (cn_min == cn_max == 4): both are inputs
+    the user already states, so the rule applies to any composition. The
+    angle cutoff is the largest of those constraints' cutoff_distance (the
+    measured T-X shell). An anion that already has an explicit angle
+    constraint over the same neighbour set is left alone, so it wins; the
+    generic auto X-X-X band of augment_coupling_constraints over the same
+    set is replaced, being the less specific of the two.
+    `auto_tetrahedral_bridging: false` switches this off. Returns `config`
+    unchanged (same object) when nothing is injected."""
+    if config.get("auto_tetrahedral_bridging", True) is False:
+        return config
+    ionic_q = config.get("ionic_charges", {})
+    if not ionic_q:
+        return config
+    present = set(parse_composition(config["composition"]).keys())
+
+    shells = {}  # anion -> {tetrahedral cation: cutoff}
+    for c in config.get("coordination_constraints", []):
+        t = c["center_atom"]
+        if ionic_q.get(t, 0) < TETRAHEDRAL_MIN_VALENCE or t not in present:
+            continue
+        if not (c.get("cn_min") == 4 and c.get("cn_max") == 4):
+            continue
+        for x in _expand_wildcard(c["neighbor_atom"], present, t, ionic_q):
+            if ionic_q.get(x, 0) < 0:
+                cut = float(c["cutoff_distance"])
+                shells.setdefault(x, {})
+                shells[x][t] = max(cut, shells[x].get(t, 0.0))
+
+    def key(a):
+        return (a["atom_center"],
+                frozenset(_expand_wildcard(a["atom_neighbor"], present, a["atom_center"], ionic_q)))
+
+    def auto_coupled(a):  # injected by augment_coupling_constraints
+        return str(a.get("label", "")).endswith("[auto]")
+
+    angle_csts = list(config.get("angle_constraints", []))
+    explicit = {key(a) for a in angle_csts if not auto_coupled(a)}
+    lo, hi = TETRAHEDRAL_BRIDGING_RANGE
+    injected = False
+    for x in sorted(shells):
+        tets = sorted(shells[x])
+        if (x, frozenset(tets)) in explicit:
+            continue
+        # The cited band replaces the generic auto X-X-X band where both
+        # cover the same neighbours (quartz: every O neighbour is Si).
+        angle_csts = [a for a in angle_csts
+                      if not (auto_coupled(a) and key(a) == (x, frozenset(tets)))]
+        injected = True
+        angle_csts.append({
+            "atom_center": x, "atom_neighbor": tets,
+            "angle_min": lo, "angle_max": hi,
+            "angle_cutoff": max(shells[x].values()), "weight": 1.0,
+            "label": f"{'/'.join(tets)}-{x}-{'/'.join(tets)} [auto, T-X-T]",
+        })
+    if not injected:
+        return config
+    out = dict(config)
+    out["angle_constraints"] = angle_csts
+    return out
+
+
 def augment_coupling_constraints(config: dict) -> dict:
     """
     Auto-inject a default anion-centred coordination_constraint (and,
