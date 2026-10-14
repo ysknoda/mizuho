@@ -98,3 +98,19 @@ over the top 50 with early stopping.
   CONT.
 - ADR-0008's per-Z report (as ADR-0022 restates it) and `suggest` (ADR-0023) come after these
   measurements; no gate depends on them.
+
+## Measured: the AsO4 order (2026-10-14)
+
+`scripts/phase1_ladder.py asO4`, restarts x1 / x2 / x4:
+
+| factor | `solve_local_shell`, feasible / infeasible (seeds 42, 43, 44) | staged rank, feasible / infeasible (seeds 42, 43) |
+| --- | --- | --- |
+| x1 | 0.054 / 0.076, 0.063 / 0.060, 0.066 / 0.061 | 1 / 4, 1 / 17 |
+| x2 | 0.054 / 0.076, 0.063 / 0.033, 0.063 / 0.061 | 1 / 17, 2 / 1 |
+| x4 | 0.054 / 0.033, 0.000 / 0.033, 0.000 / 0.033 | 1 / 17, 2 / 1 |
+
+No budget up to x4 orders the two shells on every seed, so by the rule above both tests stay
+xfail, with their reason restated in normalised units. The landscape does separate them: at x4 the
+infeasible shell sits at one floor, 0.0331, on every seed, and the feasible one reaches 0. The
+solver does not reach that 0 reliably: seed 42 stays at 0.0541 at every factor.
+
