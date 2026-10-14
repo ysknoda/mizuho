@@ -60,10 +60,17 @@ Each rule below is fixed before its measurement runs.
 
 3. **Phase 1's feasibility solve** (ADR-0012's remedy, chosen there before measuring). In parallel
    with 1-2, since it measures the rank gate rather than the global-minimum gate. A budget ladder
-   x1 / x2 / x4 on the local-shell solve finds the budget at which the two AsO4 xfails in
-   `tests/unit/test_geometry.py` pass (since ADR-0009 the infeasible shell's 0.0359 sits inside the
-   feasible one's 0.030-0.051; the tests already xpass on some runs). The five-seed rank spread of
-   diopside and adamite is then measured at that budget. Phase 1 taking 2-4x longer is accepted.
+   x1 / x2 / x4 multiplies the restarts of every local-shell solve
+   (`scripts/phase1_ladder.py`) and finds the smallest budget at which the two AsO4 cases in
+   `tests/unit/test_geometry.py` are separated on every seed: the known-feasible shell scores below
+   the known-infeasible one in `solve_local_shell` (seeds 42-44), and ranks ahead of it in
+   `rank_by_feasibility_staged` (seeds 42-43). The order is the criterion, not the tests passing:
+   the first test also asserts absolute thresholds (feasible < 2.5, infeasible > 3.5) in the raw
+   units of before ADR-0009, which no budget can meet in normalised units, where the infeasible
+   shell scores about 0.06. At x1, `solve_local_shell` separates the two on seed 42 only, and the
+   staged ranking on both seeds. The five-seed rank spread of diopside and adamite is then measured
+   at that budget. Phase 1 taking 2-4x longer is accepted. The two tests' absolute thresholds are
+   restated in normalised units once the ladder has measured the separation.
    - Rejected: a Phase-1-only score (raw angles, a hard feasibility test). It would reintroduce the
      two objectives ADR-0009 removed.
    - Rejected as the remedy: drawing by free-parameter stratum. It lifts diopside, alone in its
