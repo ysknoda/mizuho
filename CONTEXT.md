@@ -77,7 +77,8 @@ _Avoid_: neighbour radius, search radius
 **Reference structure**:
 A published experimental structure, reconstructed in this repository and verified against its own
 bond lengths and coordination numbers before use. The objective is correct only if it is minimised
-here.
+here. One exception: adamite's is a DFT relaxation with its H located
+(ADR-0025).
 _Avoid_: ground truth, target structure, experimental data
 
 **Penalty term**:

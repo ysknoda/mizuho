@@ -54,3 +54,8 @@ support removes it and widens the zero-error plateau. The change is kept for wha
 exact integer count, pyrite's reference, the parking hole), and is not by itself a uniqueness
 measure. The run was stopped once this was clear and the bond-valence term (ADR-0016) measured
 on top of it.
+
+## Amended by ADR-0020
+
+The integrality penalty's removal is decided by ADR-0020's term ablation: configuration (iv), the
+current code without it, against (iii). It is removed if Stage-1 convergence and tier 1 match.

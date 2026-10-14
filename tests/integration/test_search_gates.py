@@ -57,7 +57,8 @@ MINERALS = sorted(n for n in _REFS if n != "wollastonite_casio3")
 
 # Recorded failures (ADR-0005): the correct threshold, xfail rather than relaxed.
 RANK_XFAIL = {
-    "adamite": "published topology ranked 2950 of 69,974 before ADR-0011/0012"
+    "adamite": "worst of five seeds 4036 (uniqueness plan) and 3657 (ADR-0016), "
+    "both against the 1937 reference; not yet re-measured against ADR-0025's"
 }
 
 
@@ -69,8 +70,6 @@ def _record(name: str, payload: dict) -> None:
 def _full_config(name):
     ref = _REFS[name]
     base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
-    if name == "adamite":
-        base["charge_balance_weight"] = 0.0  # undetermined H, see the reference gate
     cfg = build_sg_config(base, ref.sg)
     _, pv, asg = ref.build()
     cfg = dict(cfg, wyckoff_sites=assignments_to_sites(asg))
@@ -102,9 +101,10 @@ def _located_key(sg, assignment, located):
 def test_rank_gate_worst_over_five_seeds(name):
     base, _, _, asg = _full_config(name)
     sg = _REFS[name].sg
-    # Elements the composition has but the reference does not locate
-    # (adamite's hydrogen, calc_flag 'dum') cannot be matched, so classes
-    # are compared on the located elements only.
+    # Elements the composition has but the reference does not locate cannot
+    # be matched, so classes are compared on the located elements only.
+    # (No current reference lacks one: adamite's H is located since
+    # ADR-0025.)
     located = {a.element for a in asg}
     target = _located_key(sg, asg, located)
     n_max = base.get("tree_search", {}).get("max_candidates", 50)

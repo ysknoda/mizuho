@@ -30,3 +30,8 @@ origin-choice trap behind the spinel and anatase cases). They belong in the tool
   is paid once.
 - `fit` is the user-facing form of ADR-0005's global-minimum gate, and the entry point for fitting
   structure parameters in a space group the test fixtures do not cover.
+
+## Amended by ADR-0023
+
+`suggest` is no longer blocked. It writes measured cutoffs, bands and tolerances, and leaves the
+cited values (`cn_min`, `cn_max`, a volume without a measured density) blank for the user to cite.

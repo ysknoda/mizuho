@@ -3,15 +3,23 @@
 Published experimental structures used as the correctness gate of
 [ADR-0003](../../../docs/adr/0003-experimental-structure-is-the-gate.md): the objective is correct
 only if it is approximately zero when evaluated here, with every coordination term reporting the
-cited coordination number.
+cited coordination number. One exception is a DFT relaxation, adamite's
+([ADR-0025](../../../docs/adr/0025-adamite-reference-is-a-dft-relaxation-with-h.md)).
 
 One file per mineral, named after the fixture it validates, so the mapping is mechanical:
 
 | reference file | fixture |
 |---|---|
-| `adamite.cif` | `../adamite.yaml` |
+| `adamite_aflow_icsd34868.cif` | `../adamite.yaml` |
 | `topaz.cif` | `../topaz.yaml` |
 | `wollastonite.cif` | `../wollastonite_casio3.yaml` |
+
+### Adamite
+
+| file | source | role |
+|---|---|---|
+| `adamite_aflow_icsd34868.cif` | AFLOW, PBE relaxation of ICSD 34868 | reference — Pnnm written as P1 (the reader detects the group); H located, O-H 0.978 A; As-O 1.719-1.728 A, Zn CN 5 and 6 |
+| `adamite.cif` | COD 1010925, Kokkoros 1937 | former reference, kept as a CIF-reader case: its H is a dummy atom (`calc_flag 'dum'`) the reader skips, and its As-O spans 1.588-1.814 A |
 
 ### Added for untested space groups
 

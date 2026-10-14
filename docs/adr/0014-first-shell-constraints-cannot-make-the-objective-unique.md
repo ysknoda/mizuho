@@ -78,3 +78,9 @@ can see this, because none of the first-shell quantities is wrong.
 - What information *would* separate same-topology, same-connectivity impostors. Candidates not
   yet discussed: a volume or density target with a cited source, and second-refinement checks
   (ADR-0007's tautology) on corundum, anatase and forsterite.
+
+## Amended by ADR-0020 and ADR-0024
+
+Step 7 starts (ADR-0020): on ADR-0019's criterion, the topology class, its precondition holds
+wherever Stage 1 converges. The anion-centred gray band is closed as report-only (ADR-0024): the
+non-oxide references arrived, and the impostors it alone separated are gone.

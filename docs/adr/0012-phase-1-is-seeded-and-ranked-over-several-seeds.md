@@ -35,3 +35,10 @@ reaches Phase 1.
   rank gate is of the order of an hour. It stays in the slow tier (`test_search_gates.py`).
 - ADR-0011 changes what the gate compares (equivalence classes rather than literal letters); the
   two changes land together.
+
+## Amended by ADR-0020
+
+The spread is large (diopside 8-103 over five seeds after the uniqueness plan, worst 154 after
+ADR-0016; adamite 1553-4036), so the remedy decided above, a stronger
+feasibility solve, is measured as a budget ladder: first against the two AsO4 xfails, then on the
+five-seed rank spread.
