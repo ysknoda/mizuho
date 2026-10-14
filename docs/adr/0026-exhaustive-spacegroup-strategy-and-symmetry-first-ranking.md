@@ -47,3 +47,19 @@ reaches 0.036. 367 s. The run over all 230 groups is recorded when it finishes.
   at L1) can be replayed against that table instead of re-optimising.
 - `run`'s ranking order changes for every automatic strategy: a constraint-satisfying entry in a
   higher group outranks a lower-error one in a lower group.
+
+## The plan for L1 (agreed 2026-10-14)
+
+In AB-MCTS at L1, GEN widens (a new space group) and CONT deepens (more budget for a group already
+started, through L2). The known-answer misses are of two kinds. CsCl's 221 never enters Phase 0's
+top five, which allocation can address. NaCl -> 99 and Si -> 74 stop in subgroups of the answer,
+which it cannot: a subgroup has more freedom and reaches zero error more easily, so a reward on
+error alone pulls any allocation, AB-MCTS's included, towards subgroups. The order of work:
+
+1. Run the five known-answer compounds with `strategy: exhaustive`, one at a time, and record each
+   group's error and topology class: the ground-truth table.
+2. Compare L1 strategies (PUCT, flat, AB-MCTS) by replaying them on that table, without
+   re-optimising.
+3. Try a top-down order first, from the highest point-group order down, with a reward that
+   carries symmetry as this ADR's ranking does. GEN and CONT are tuned after that.
+
