@@ -84,12 +84,12 @@ def _config(name: str, variant: str):
     return dict(cfg, wyckoff_sites=assignments_to_sites(asg)), np.asarray(pv), asg
 
 
-def run_fit(name: str, variant: str, out: Path) -> dict:
+def run_fit(name: str, variant: str, out: Path, seed: int = SEED) -> dict:
     cfg, pv_ref, asg = _config(name, variant)
     opt = dict(cfg.get("optimization", {}))
     opt["n_restarts"] = int(opt.get("n_restarts", 8) * BUDGET)
     opt["cma_maxiter"] = int(opt.get("cma_maxiter", 300) * BUDGET)
-    opt["seed"] = SEED
+    opt["seed"] = seed
     t0 = time.time()
     best_p, best_e, _ = optimize_one_assignment(asg, cfg, opt, verbose=False, label=name)
     elapsed = time.time() - t0
@@ -100,7 +100,7 @@ def run_fit(name: str, variant: str, out: Path) -> dict:
         "mineral": name,
         "variant": variant,
         "budget": BUDGET,
-        "seed": SEED,
+        "seed": seed,
         "seconds": elapsed,
         "error_found": float(best_e),
         "error_published": float(err_ref),
@@ -114,7 +114,8 @@ def run_fit(name: str, variant: str, out: Path) -> dict:
         "published_vector": [float(x) for x in pv_ref],
     }
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"{name}_{variant}.json").write_text(json.dumps(record, indent=2))
+    stem = f"{name}_{variant}" if seed == SEED else f"{name}_{variant}_seed{seed}"
+    (out / f"{stem}.json").write_text(json.dumps(record, indent=2))
     return record
 
 
@@ -139,13 +140,14 @@ def main() -> None:
     ap.add_argument("variant", nargs="?", choices=VARIANTS)
     ap.add_argument("--out", default="gate-results/ablation")
     ap.add_argument("--impostor-only", action="store_true")
+    ap.add_argument("--seed", type=int, default=SEED)
     args = ap.parse_args()
     if args.impostor_only:
         print(json.dumps(score_impostor(), indent=2))
         return
     if not (args.mineral and args.variant):
         ap.error("mineral and variant are required unless --impostor-only")
-    rec = run_fit(args.mineral, args.variant, Path(args.out))
+    rec = run_fit(args.mineral, args.variant, Path(args.out), args.seed)
     print(json.dumps({k: v for k, v in rec.items()
                       if k not in ("param_vector", "published_vector")}, indent=2))
 
