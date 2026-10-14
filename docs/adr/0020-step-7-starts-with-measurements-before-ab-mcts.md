@@ -69,8 +69,12 @@ Each rule below is fixed before its measurement runs.
    units of before ADR-0009, which no budget can meet in normalised units, where the infeasible
    shell scores about 0.06. At x1, `solve_local_shell` separates the two on seed 42 only, and the
    staged ranking on both seeds. The five-seed rank spread of diopside and adamite is then measured
-   at that budget. Phase 1 taking 2-4x longer is accepted. The two tests' absolute thresholds are
-   restated in normalised units once the ladder has measured the separation.
+   at that budget. Phase 1 taking 2-4x longer is accepted.
+   - The first test's thresholds are restated in normalised units from the ladder, by a rule fixed
+     here before its data: at the smallest separating budget the test takes that budget, its
+     feasible ceiling is the largest feasible score over seeds 42-44 and its infeasible floor the
+     smallest infeasible score, each rounded outward to two significant figures. If no budget up
+     to x4 separates them, both tests stay xfail with their reason restated in normalised units.
    - Rejected: a Phase-1-only score (raw angles, a hard feasibility test). It would reintroduce the
      two objectives ADR-0009 removed.
    - Rejected as the remedy: drawing by free-parameter stratum. It lifts diopside, alone in its
