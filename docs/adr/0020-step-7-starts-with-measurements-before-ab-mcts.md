@@ -114,3 +114,40 @@ xfail, with their reason restated in normalised units. The landscape does separa
 infeasible shell sits at one floor, 0.0331, on every seed, and the feasible one reaches 0. The
 solver does not reach that 0 reliably: seed 42 stays at 0.0541 at every factor.
 
+## Measured: the term ablation (2026-10-14)
+
+`scripts/ablate_terms.py`, x4, seed 42, published assignment fixed. S1 = Stage 1 converged
+(error <= published + 1e-3; published scores 0 throughout), T1 = tier 1. Lattice deviation in %.
+
+| variant | diopside | topaz | adamite |
+| --- | --- | --- | --- |
+| (i) compact support only | 6.4e-9, S1, other class; a +5.7 b -5.6 beta +6.8, 3 bounds | 3.1e-3; +4.6 / -4.7 / +14.0, 3 bounds | 1.5e-2; +0.5 / -0.3 / +5.4 |
+| (ii) + bond valence | 0, S1, **T1**; a +5.7 c -4.6 beta -7.4, 2 bounds | 1.1e-3; -8.2 / -4.7 / -14.0, 2 bounds | 1.5e-2; -3.5 / +4.6 / -7.1, 1 bound |
+| (iii) + volume (current) | 2.5e-9, S1, other class; b -5.6, 1 bound | 2.1e-2; -13.6 / -4.7 / +14.0, 3 bounds | 1.5e-2; +1.1 / +6.0 / -7.1, 2 bounds |
+| (iv) (iii) without integrality | 0, S1, **T1**; c -5.8 beta -7.4, 1 bound | 4.2e-2; -13.6 / -4.7 / +14.0, 3 bounds | 1.4e-2; -1.4 / -5.8 / +7.9, 2 bounds |
+| (v) (iii) without bond valence | 8.5e-5, S1, other class; a +5.7 beta +6.8, 2 bounds | 1.7e-12, S1, other class; +2.7 / +5.4 / -7.3 | 1.5e-2; -0.7 / +1.0 / +2.8 |
+
+Topaz's round-2 impostor (published 0): (i) 4.9e-11, (ii) 7.5e-4, (iii) 6.8e-2, (iv) 6.8e-2,
+(v) 6.8e-2.
+
+Read against the rules:
+
+- **Volume stays.** Without it the impostor scores 7.5e-4, inside the 1e-3 margin.
+- **Bond valence stays.** Without it the impostor is still rejected (6.8e-2), but tier 1 does not
+  improve on any mineral.
+- **Integrality: the rule does not decide.** (iv) does not match (iii): it reaches the published
+  class on diopside where (iii) does not, and matches it on topaz and adamite. The rule removes
+  integrality on a match and says nothing of an improvement. Left to a decision.
+- **The terms do not cause the Stage-1 failures.** Adamite stops at one point in every variant,
+  (i) included: its whole residual, 0.014982 to twelve digits in (i), (ii), (iii) and (v), is one Zn
+  at CN 4 against the cited [5, 6], a discrete minimum the lattice moves around. Topaz fails Stage 1
+  in (i) to (iv), (i) included. Diopside converges in every variant, which contradicts ADR-0019's
+  8.3e-3 for (iii) at the same budget and seed; the likeliest cause is a different environment
+  (this run had no numba) diverging the CMA-ES trajectory, which would make one seed at x4 too
+  thin to decide tier 1 on.
+- **Topaz without bond valence (v) reaches a zero-error point of another class**, inside the bounds,
+  with every coordination number as cited. The current objective scores it 5.1e-4, all from Si's
+  bond-valence sum (3.74 against 4, tolerance 0.17): inside the margin. Whether it is another
+  structure needs the DFT spot-check of this ADR.
+- Measurement 2 (CONT) runs on adamite and topaz, the two that fail Stage 1 under (iii).
+
