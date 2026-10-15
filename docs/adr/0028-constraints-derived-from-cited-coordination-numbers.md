@@ -106,8 +106,32 @@ Totals: diopside S1 3/5, tier 1 3/5 (hand fixture with ADR-0027's band: 3/5, 2/5
 - Adamite seed 44 reaches the published lattice within 1.3 % in another class: the lattice
   alone does not tell the classes apart.
 
+## Measured: are the derived configs' end points the hand fixtures' ones? (2026-10-15)
+
+Every recorded end point of the three minerals (ablation, CONT, backends, class enumeration,
+ADR-0027's runs, and the fifteen derived fits) was classed with the hand fixture's cutoffs and
+scored under both configs. Points per mineral: diopside 30, topaz 22, adamite 26.
+
+- **Diopside: the derived config rejects every hand zero-error other-class point.** All five
+  such points (6.6e-10 to 4.1e-8 under the hand fixture) score 8.8e-3 to 0.38 derived, almost all
+  from the derived X-Mg-X octahedral band (observed 63-144 deg; the hand fixture has no Mg angle
+  band). This is why tier 1 holds 3/5 derived, and why all three derived tier-1 hits are new
+  points.
+- **Topaz and adamite: the hand zero-error points stay zero derived**, and the derived fits
+  add new ones. Of ten derived end points, two fall in classes the hand runs had reached at zero
+  error (adamite seeds 43, 45 with CONT seeds 42, 46); the rest are new classes. The hand
+  fixture rejects the new ones for two reasons the derived inputs do not carry:
+  - **Which anion a cation bonds.** Topaz seed 45 (1.10 under the hand fixture) has Si with two O
+    and, by its derived CN 4 over all anions, two F; the hand fixture counts Si(O) only. ADR-0028
+    Q7 states one combined anion range because this is not an input.
+  - **Hydrogen's second neighbour.** Adamite seed 44 (1.44) puts a second O within the hand H(O)
+    cutoff of 1.65 A (soft CN 1.87); the derived H shell ends at 1.25 A, so nothing keeps a
+    second O away from H. Its Zn polyhedra also go unconstrained (O-Zn-O 44-147 deg): adamite's
+    Zn is cited as CN [5, 6], which gets no angle band.
+
 ## Open
 
-- Whether the derived configs' zero-error other-class points are the ones the hand fixtures
-  recorded, or new ones.
+- Anion partition: whether to let the user state, per cation, which anions it bonds (topaz Si to
+  O only), as a cited fact.
+- An H...X floor beyond the H shell (a hydrogen-bond acceptor distance), from a cited source.
 - Holding the lattice when the bands are wide (tier 2).
