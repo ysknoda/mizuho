@@ -101,6 +101,20 @@ def derive_constraints(config: dict) -> dict:
                            "cn_min": lo, "cn_max": hi, "cutoff_distance": max(cutoffs),
                            "weight": 1.5, "label": f"{cation}(X) [derived]"})
 
+    # One H per anion at most: an anion with two H would be a water molecule,
+    # not a hydroxyl (ADR-0028). Hydrates switch it off with
+    # `auto_hydroxyl: false`.
+    if "H" in cns and "H" in present and config.get("auto_hydroxyl", True) is not False:
+        h_lo, h_hi = _cn_range(cns["H"])
+        stated_pairs = {(c["center_atom"], c["neighbor_atom"]) for c in coords
+                        if isinstance(c["neighbor_atom"], str)}
+        for x in anions:
+            if (x, "H") not in stated_pairs:
+                cut = bond_band("H", int(charges["H"]), x, h_lo, h_hi)["cutoff"]
+                coords.append({"center_atom": x, "neighbor_atom": "H", "cn_min": 0, "cn_max": 1,
+                               "cutoff_distance": cut, "weight": 1.0,
+                               "label": f"{x}(H) [derived]"})
+
     out = dict(config)
     out["bond_constraints"] = bonds
     out["coordination_constraints"] = coords

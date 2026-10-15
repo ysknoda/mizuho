@@ -221,27 +221,24 @@ def _adamite_like_config():
     }
 
 
-def test_coupling_injects_hh_exclusion_when_hydrogen_present():
+def test_coupling_leaves_hydrogen_out_of_the_anion_shell():
+    """ADR-0028: with H present, the auto anion constraints name the
+    framework cations, not X: H is not a polyhedral cation and its hydrogen
+    bonds lie where no cutoff separates them (ADR-0025)."""
     cfg = _adamite_like_config()
     new_cfg = augment_coupling_constraints(cfg)
     o_angle = next(a for a in new_cfg["angle_constraints"]
                    if a["atom_center"] == "O")
-    assert o_angle.get("exclude_neighbor_pairs") == [["H", "H"]]
+    o_coord = next(c for c in new_cfg["coordination_constraints"]
+                   if c["center_atom"] == "O" and "[auto]" in c.get("label", ""))
+    assert "H" not in o_angle["atom_neighbor"] and "H" not in o_coord["neighbor_atom"]
+    assert "exclude_neighbor_pairs" not in o_angle
 
 
 def test_coupling_no_hh_exclusion_when_hydrogen_absent():
     # rutile_tio2-style: no H in the composition at all -- the H-H
     # exclusion default must not appear (it would be meaningless noise).
     cfg = _rutile_like_config()
-    new_cfg = augment_coupling_constraints(cfg)
-    o_angle = next(a for a in new_cfg["angle_constraints"]
-                   if a["atom_center"] == "O")
-    assert "exclude_neighbor_pairs" not in o_angle
-
-
-def test_coupling_hh_exclusion_opt_out():
-    cfg = _adamite_like_config()
-    cfg["auto_coupling_exclude_hh"] = False
     new_cfg = augment_coupling_constraints(cfg)
     o_angle = next(a for a in new_cfg["angle_constraints"]
                    if a["atom_center"] == "O")

@@ -305,11 +305,17 @@ def augment_coupling_constraints(config: dict) -> dict:
             cutoff = _max_bond_distance_for(anion, bond_csts, present, ionic_q)
         if cutoff is None:
             continue  # nothing to derive a sensible cutoff from -- skip
-        pair = _pair(anion, "X")
+        # H is not a polyhedral cation, and its hydrogen bonds (O...H about
+        # 2.3 A) lie just past the framework cations' bonds, where no cutoff
+        # can separate them (ADR-0025). The anion's cation shell is therefore
+        # its non-H cations whenever H is present (ADR-0028).
+        framework = sorted(e for e in present if ionic_q.get(e, 0) > 0 and e != "H")
+        neighbours = framework if ("H" in present and ionic_q.get("H", 0) > 0 and framework) else "X"
+        pair = _pair(anion, neighbours)
         if pair not in existing_coord:
             injected = True
             new_coord.append({
-                "center_atom": anion, "neighbor_atom": "X",
+                "center_atom": anion, "neighbor_atom": neighbours,
                 "cn_min": cn_lo, "cn_max": cn_hi,
                 "cutoff_distance": cutoff, "weight": weight,
                 "label": f"{anion}(X) [auto]",
@@ -317,7 +323,7 @@ def augment_coupling_constraints(config: dict) -> dict:
         if add_angle and pair not in existing_angle:
             injected = True
             angle_entry = {
-                "atom_center": anion, "atom_neighbor": "X",
+                "atom_center": anion, "atom_neighbor": neighbours,
                 "angle_min": a_lo, "angle_max": a_hi,
                 "angle_cutoff": cutoff, "weight": weight,
                 "label": f"X-{anion}-X [auto]",
@@ -330,7 +336,7 @@ def augment_coupling_constraints(config: dict) -> dict:
             # geometry this auto-coupling feature targets. Excluded by
             # default; set auto_coupling_exclude_hh: false to model
             # actual molecular water/hydronium.
-            if exclude_hh and "H" in present and ionic_q.get("H", 0) > 0:
+            if exclude_hh and neighbours == "X" and "H" in present and ionic_q.get("H", 0) > 0:
                 angle_entry["exclude_neighbor_pairs"] = [["H", "H"]]
             new_angle.append(angle_entry)
 

@@ -255,7 +255,7 @@ Whenever `ionic_charges` is set and some cation-centred `coordination_constraint
 | `auto_coupling_cn_range` | `[2, 4]` | Override the injected `cn_min`/`cn_max` |
 | `auto_coupling_angle_range` | `[80, 160]` | Override the injected `angle_min`/`angle_max` |
 | `auto_coupling_weight` | `1.0` | Override the injected weight |
-| `auto_coupling_exclude_hh` | `true` | Auto-add `exclude_neighbor_pairs: [[H, H]]` to the injected angle constraint whenever H is one of the coupled cations (an H-center-H angle would model a water molecule, not the intended cation-anion-cation bridging geometry); set `false` to disable |
+| `auto_coupling_exclude_hh` | `true` | Only when H is the sole cation: auto-add `exclude_neighbor_pairs: [[H, H]]` to the injected angle constraint. Whenever other cations are present, the injected constraints name those cations and leave H out entirely ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)) |
 
 ### Penalty normalisation
 
