@@ -44,6 +44,15 @@ annealing reports is classed.
 | run | CMA-ES | basin hopping | dual annealing | DA minima: reported / distinct / revisits |
 | --- | --- | --- | --- | --- |
 | topaz seed 42 (312k evaluations) | 0, S1, other class | 1.3e-2 | 0, S1, other class | 13 / 11 / 2 |
+| diopside seed 44 (377k evaluations) | 1.5e-22, S1, **published** | 4.4e-5, S1, other class | 0, S1, **published** | 184 / 17 / 167 |
 
-Dual annealing reports few minima (13 in 312k evaluations: each is a full local search) and
-revisits 2 of them; the published class is not among them.
+Topaz: dual annealing reports few minima (13 in 312k evaluations) and revisits 2; the
+published class is not among them.
+
+Diopside: the chain revisits heavily. One class at error 0.112 takes 121 of the 184 minima,
+from evaluation 18.8k to 129k (30 % of the budget); the chain then passes two classes near
+2.4e-2 and reaches the published class (error 0) at minimum 178, evaluation 214k. This is the
+case a tabu inside the chain is for: a chain held in one non-zero class for most of its budget.
+A candidate mechanism: when one class has taken more than a set number of a chain's minima at
+non-zero error, stop that chain and give its remaining evaluations to a new start (scipy's
+dual_annealing stops when its callback returns True).
