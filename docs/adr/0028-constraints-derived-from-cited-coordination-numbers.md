@@ -72,6 +72,42 @@ Tier 1 holds on all eight (as with the hand fixtures); tier 2 on five of eight (
 five of eight, a different five). Wurtzite's c runs to its bound; why the
 derived bands allow that strained cell and the hand bands did not is not yet examined.
 
+## Measured: the three hard minerals with derived constraints (2026-10-15, x4, seeds 42-46)
+
+Same script and settings. "Edge" lists lattice parameters that ended on their search bound.
+
+| mineral | seed | error | S1 | tier 1 | lattice |
+| --- | --- | --- | --- | --- | --- |
+| diopside | 42 | 2.5e-2 | no | fail | b, c on edge |
+| diopside | 43 | 2.1e-2 | no | fail | a, b, beta on edge |
+| diopside | 44 | 1.5e-22 | yes | pass | a, beta on edge |
+| diopside | 45 | 0 | yes | pass | a, b, beta on edge |
+| diopside | 46 | 2.3e-7 | yes | pass | c on edge (+6.6 %) |
+| topaz | 42 | 0 | yes | fail | a, b on edge |
+| topaz | 43 | 0 | yes | fail | a on edge |
+| topaz | 44 | 4.4e-4 | yes | fail | a -13, b +14 %, b on edge |
+| topaz | 45 | 0 | yes | fail | b, c on edge (c +14 %) |
+| topaz | 46 | 0 | yes | fail | b, c on edge (c +14 %) |
+| adamite | 42 | 1.6e-2 | no | fail | a, c on edge |
+| adamite | 43 | 0 | yes | fail | b on edge |
+| adamite | 44 | 0 | yes | fail | within 1.3 %, no edge |
+| adamite | 45 | 0 | yes | fail | c on edge |
+| adamite | 46 | 1.7e-4 | yes | fail | a -5.6, c +6.1 % |
+
+Totals: diopside S1 3/5, tier 1 3/5 (hand fixture with ADR-0027's band: 3/5, 2/5); topaz S1
+5/5, tier 1 0/5; adamite S1 4/5, tier 1 0/5; tier 2 0/15. Adamite's published structure scores
+3.8e-5 under the derived config, so its zero-error other-class points sit below it.
+
+- Tier 1 with derived constraints is no worse than with the hand fixtures: the hard minerals
+  fail for the same reason (zero-error points of other classes, ADR-0027), not for the input.
+- The derived bands are wider than the hand-measured ones, and lattices run to their bounds
+  far more often (14 of 15 here; wurtzite among the easy ones). Tier 2 is where derived
+  constraints lose.
+- Adamite seed 44 reaches the published lattice within 1.3 % in another class: the lattice
+  alone does not tell the classes apart.
+
 ## Open
 
-- Diopside, topaz and adamite with derived constraints, seeds 42-46: running.
+- Whether the derived configs' zero-error other-class points are the ones the hand fixtures
+  recorded, or new ones.
+- Holding the lattice when the bands are wide (tier 2).
