@@ -110,11 +110,11 @@ Totals: diopside S1 3/5, tier 1 3/5 (hand fixture with ADR-0027's band: 3/5, 2/5
 
 Every recorded end point of the three minerals (ablation, CONT, backends, class enumeration,
 ADR-0027's runs, and the fifteen derived fits) was classed with the hand fixture's cutoffs and
-scored under both configs. Points per mineral: diopside 30, topaz 22, adamite 26.
+scored under both configs. Points per mineral: diopside 29, topaz 25, adamite 25.
 
 - **Diopside: the derived config rejects every hand zero-error other-class point.** All five
-  such points (6.6e-10 to 4.1e-8 under the hand fixture) score 8.8e-3 to 0.38 derived, almost all
-  from the derived X-Mg-X octahedral band (observed 63-144 deg; the hand fixture has no Mg angle
+  such points (0 to 4.1e-8 under the hand fixture) score 8.8e-3 to 0.38 derived; the two
+  broken down lose it almost entirely to the derived X-Mg-X octahedral band (observed 63-144 deg; the hand fixture has no Mg angle
   band). This is why tier 1 holds 3/5 derived, and why all three derived tier-1 hits are new
   points.
 - **Topaz and adamite: the hand zero-error points stay zero derived**, and the derived fits
