@@ -138,3 +138,16 @@ def test_hydrogen_bond_angle_band_and_its_opt_out():
     assert (hb[0]["angle_min"], hb[0]["angle_max"], hb[0]["angle_cutoff"]) == (130.0, 180.0, 2.2)
     off = derive_constraints(_hydroxide(auto_hydrogen_bond=False))
     assert not [a for a in off["angle_constraints"] if a["atom_center"] == "H"]
+
+
+def test_ideal_bond_config_shrinks_only_derived_bands():
+    """ADR-0028 (c): derived bonds carry distance_ideal (the bond at s0),
+    which centring shrinks the band to; a stated bond is left alone."""
+    from mizuho.constraints import ideal_bond_config
+    stated = {"atom1": "Si", "atom2": "O", "distance_min": 1.6, "distance_max": 1.65, "cutoff": 2.4}
+    out = derive_constraints(_silicate(bond_constraints=[stated]))
+    ideal = {b["atom1"]: b for b in ideal_bond_config(out)["bond_constraints"]}
+    mg = bond_band("Mg", 2, "O", 6, 6)
+    assert ideal["Mg"]["distance_min"] == ideal["Mg"]["distance_max"] == mg["distance_ideal"]
+    assert (ideal["Si"]["distance_min"], ideal["Si"]["distance_max"]) == (1.6, 1.65)
+    assert ideal_bond_config({"bond_constraints": [stated]}) is None

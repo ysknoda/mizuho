@@ -259,6 +259,7 @@ bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every
 | `bonded_anions` | every anion | Per cation, the anions it bonds (a cited fact); the others are held outside its shell |
 | `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
 | `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
+| `optimization.centring` | `true` | After Stage 2, move a zero-error point to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back |
 
 ### Automatic anion coupling
 

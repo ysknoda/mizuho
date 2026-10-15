@@ -97,7 +97,9 @@ def _bonded_anions(config: dict, cation: str, anions: list) -> list:
 
 
 def bond_band(cation: str, valence: int, anion: str, cn_lo: int, cn_hi: int) -> dict:
-    """(distance_min, distance_max, cutoff) for one cation-anion pair."""
+    """(distance_min, distance_max, distance_ideal, cutoff) for one
+    cation-anion pair; distance_ideal is the bond at s0 itself, the target
+    of centring (ADR-0028 (c))."""
     R0 = r0(cation, valence, anion)
     if R0 is None:
         raise ValueError(f"no bond-valence R0 for {cation}({valence})-{anion}; "
@@ -109,6 +111,7 @@ def bond_band(cation: str, valence: int, anion: str, cn_lo: int, cn_hi: int) -> 
     d_min = R0 - B_BOND_VALENCE * math.log(s0 + BAND_VU)
     d_max = R0 - B_BOND_VALENCE * math.log(s0 - BAND_VU)
     return {"distance_min": round(d_min, 3), "distance_max": round(d_max, 3),
+            "distance_ideal": round(R0 - B_BOND_VALENCE * math.log(s0), 3),
             "cutoff": round(d_max + GRAY_HALF_WIDTHS * SMOOTHING_WIDTH, 3)}
 
 
@@ -251,3 +254,18 @@ def derive_constraints(config: dict) -> dict:
     if "auto_coupling_cutoff" not in config and anion_cutoff:
         out["auto_coupling_cutoff"] = anion_cutoff
     return out
+
+
+def ideal_bond_config(config: dict):
+    """The config with every derived bond band shrunk to its ideal length
+    (`distance_ideal`), for centring a zero-error point inside the bands
+    (ADR-0028 (c)); None when no bond carries one. Only bond lengths: ideal
+    polyhedron angles push edge- and face-sharing octahedra (anatase,
+    corundum) 5-12 % off their published cells."""
+    bonds, changed = [], False
+    for b in config.get("bond_constraints", []):
+        if "distance_ideal" in b:
+            b = dict(b, distance_min=b["distance_ideal"], distance_max=b["distance_ideal"])
+            changed = True
+        bonds.append(b)
+    return dict(config, bond_constraints=bonds) if changed else None

@@ -181,7 +181,19 @@ keeps E <= 1e-4 and its class.
 - A local minimisation does not move points pinned on several bounds (diopside 44).
 - Easy minerals' tier 2: 5/8 before; 6/8 with "bonds" or "both" (different sixes).
 
+## Decided: centring on ideal bond lengths (c) (2026-10-15)
+
+Option "bonds" above. After Stage 2, each refined point is moved by L-BFGS-B on
+E + 0.01 E_ideal, E_ideal the objective with every derived bond band shrunk to its ideal length
+(`distance_ideal` = R0 - b ln(V / CN), carried by each derived bond). The move is kept only if E
+rises by at most 1e-4 and the topology class is unchanged (`mizuho/optimize/driver.py` `_centre`).
+On by default; `optimization.centring: false` switches it off; a no-op for configs without
+derived bonds (every hand fixture). Ideal angles are left out: they move the published anatase
+and corundum 5-12 %. Sheared cells (forsterite, diopside) are not fixed by this; they are a
+search problem, not a centring one.
+
 ## Open
 
 - Topaz and adamite re-measured with (a) and (b), seeds 42-46.
-- Holding the lattice when the bands are wide (tier 2).
+- Sheared cells inside the derived bands (forsterite, diopside): centring on bond lengths does
+  not reach them; ideal angles do but break distorted octahedra.

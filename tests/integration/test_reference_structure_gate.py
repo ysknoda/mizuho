@@ -364,3 +364,28 @@ def test_derived_config_scores_zero_at_the_reference(name):
     full["wyckoff_sites"] = assignments_to_sites(asg)
     total = error_breakdown(pv, full)["total"]
     assert total < 1e-3, f"{name}: derived config scores {total:.6f} at its reference"
+
+
+def test_centring_pulls_a_strained_wurtzite_cell_back():
+    """ADR-0028 (c): the derived search's wurtzite end point (seed 42,
+    c +11.3 % on its bound, error 0) is centred inside the derived bond
+    bands back to within 3 % of the published cell, in the same class."""
+    from mizuho.constraints import ideal_bond_config
+    from mizuho.objective.energy import compute_error
+    from mizuho.optimize.driver import _centre
+    from mizuho.optimize.endpoints import topology_key
+    from mizuho.structure import build_bounds
+
+    ref = _REFS["wurtzite_zno"]
+    _, pv, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    cfg = dict(build_sg_config(_minimal_config(base), ref.sg))
+    cfg["wyckoff_sites"] = assignments_to_sites(asg)
+    end = np.array([3.078002928303033, 5.800000000001, 0.9712878993941999, 0.6361793383390436])
+    obj = lambda x: compute_error(x, cfg)  # noqa: E731
+    assert obj(end) < 1e-9
+    p, e = _centre(obj, cfg, ideal_bond_config(cfg), end, obj(end), build_bounds(cfg),
+                   1000, 1e-12, False)
+    assert e < 1e-4
+    assert topology_key(p, cfg) == topology_key(pv, cfg)
+    assert abs(p[0] / pv[0] - 1) < 0.03 and abs(p[1] / pv[1] - 1) < 0.03
