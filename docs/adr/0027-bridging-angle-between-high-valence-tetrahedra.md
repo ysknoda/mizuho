@@ -55,5 +55,27 @@ On the 13 references and every recorded end point (`mizuho/bond_graph.py` cutoff
 
 - The objective has no cation-cation repulsion. The bands (A) and, if a source is found, (B) stand
   in for it on the bridging angle; this is recorded as the mechanism, not hidden.
-- Diopside is re-measured with (A) at x4 over seeds 42-46 (ADR-0020's five-seed rule). Recorded
-  here when it completes.
+- Diopside is re-measured with (A) at x4 over seeds 42-46 (ADR-0020's five-seed rule), below.
+
+## Measured: diopside with and without (A) (2026-10-15)
+
+`scripts/ablate_terms.py`, x4, published assignment fixed, current code (integrality removed);
+"without" is variant `notxt` (`auto_tetrahedral_bridging: false`).
+
+| seed | with (A) | without (A) |
+| --- | --- | --- |
+| 42 | 6.6e-10, S1, other class | **0, S1, T1** |
+| 43 | 5.5e-3 | **0, S1, T1** |
+| 44 | 2.1e-2 (Ca at CN 6) | **0, S1, T1** |
+| 45 | **0, S1, T1** | 1.5e-2 |
+| 46 | **0, S1, T1** | 4.1e-8, S1, other class |
+| total | S1 3 / 5, T1 2 / 5 | S1 4 / 5, T1 3 / 5 |
+
+(A) does not improve diopside's tier 1 in this measurement (2 against 3 of 5); every seed moves,
+in both directions, so a five-seed difference of one is inside the seed-to-seed scatter. (A) does
+change the landscape: three of the four recorded other-class points now score 0.029-0.072, and
+the zero-error point it leaves (seed 42) differs from the published structure in which cations
+surround the bridging oxygen (Ca2 against Ca + Mg), which no bridging angle constrains.
+
+Integrality's removal alone moves diopside from the ablation's (iii) (seed 42: other class) to
+tier 1 on three of five seeds here.
