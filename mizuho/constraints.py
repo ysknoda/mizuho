@@ -1,0 +1,109 @@
+"""Constraints derived from composition, valences and cited coordination numbers.
+
+ADR-0028. The user states the composition, the ionic charges and, for each
+cation, its coordination number (a cited fact, ADR-0004; an integer or a
+[min, max] range) under `coordination_numbers`. Everything a reference
+structure used to supply is derived from that:
+
+- Bond bands from the bond-valence parameters (Brese & O'Keeffe 1991, the
+  table mizuho/data/bond_valence.py already carries): every bond's valence
+  within s0 +/- BAND_VU of s0 = V / CN, i.e. distances
+  R0 - b ln(s0 + BAND_VU) .. R0 - b ln(s0 - BAND_VU). BAND_VU is read off the
+  references: the largest deviation over twelve of them is 0.153 v.u.
+- Cutoffs just past the band's longest bond, by the soft count's half-width
+  (3 x smoothing_width), so the gray band ends where the band does.
+- One cation-centred coordination constraint over every anion present, with
+  the largest of those cutoffs, and the anion-centred auto-coupling cutoff
+  per anion (the largest cutoff of any cation bonding it).
+
+A constraint the config already states for the same pair wins.
+"""
+
+import math
+from typing import Dict
+
+from .composition import parse_composition
+from .data.bond_valence import B_BOND_VALENCE, r0
+
+BAND_VU = 0.16
+SMOOTHING_WIDTH = 0.10  # energy.py's default coordination smoothing width
+GRAY_HALF_WIDTHS = 3.0
+# s0 - BAND_VU must stay positive with room to spare: the references span
+# s0 >= 0.25 (Ca at CN 8). Below that the band's long end runs away
+# (Na at CN 6: s0 = 0.167, d_max 1.8 A past R0), so such cations need their
+# bond constraints stated.
+MIN_S0 = 0.25
+
+
+def _cn_range(value):
+    if isinstance(value, (list, tuple)):
+        lo, hi = int(value[0]), int(value[1])
+    else:
+        lo = hi = int(value)
+    if not 0 < lo <= hi:
+        raise ValueError(f"coordination_numbers: bad range {value!r}")
+    return lo, hi
+
+
+def bond_band(cation: str, valence: int, anion: str, cn_lo: int, cn_hi: int) -> dict:
+    """(distance_min, distance_max, cutoff) for one cation-anion pair."""
+    R0 = r0(cation, valence, anion)
+    if R0 is None:
+        raise ValueError(f"no bond-valence R0 for {cation}({valence})-{anion}; "
+                         "state its bond_constraints explicitly")
+    s0 = valence / ((cn_lo + cn_hi) / 2)
+    if s0 < MIN_S0:
+        raise ValueError(f"{cation}-{anion}: bond valence s0 = {s0:.3f} is below {MIN_S0} "
+                         "(ADR-0028's validated range); state its bond_constraints explicitly")
+    d_min = R0 - B_BOND_VALENCE * math.log(s0 + BAND_VU)
+    d_max = R0 - B_BOND_VALENCE * math.log(s0 - BAND_VU)
+    return {"distance_min": round(d_min, 3), "distance_max": round(d_max, 3),
+            "cutoff": round(d_max + GRAY_HALF_WIDTHS * SMOOTHING_WIDTH, 3)}
+
+
+def derive_constraints(config: dict) -> dict:
+    """The config with the constraints ADR-0028 derives from
+    `coordination_numbers`; returns `config` itself when it has none."""
+    cns = config.get("coordination_numbers")
+    if not cns:
+        return config
+    charges: Dict[str, float] = config.get("ionic_charges") or {}
+    present = set(parse_composition(config["composition"]))
+    anions = sorted(e for e in present if charges.get(e, 0) < 0)
+    if not anions:
+        raise ValueError("coordination_numbers needs ionic_charges with at least one anion")
+
+    bonds = list(config.get("bond_constraints", []))
+    coords = list(config.get("coordination_constraints", []))
+    stated_bonds = {frozenset((b["atom1"], b["atom2"])) for b in bonds if isinstance(b["atom2"], str)}
+    stated_centres = {c["center_atom"] for c in coords
+                      if charges.get(c["center_atom"], 0) > 0}
+    anion_cutoff: Dict[str, float] = {}
+
+    for cation, cn in sorted(cns.items()):
+        if cation not in present:
+            continue
+        valence = charges.get(cation, 0)
+        if valence <= 0 or valence != int(valence):
+            raise ValueError(f"coordination_numbers: {cation} needs a positive integer charge")
+        lo, hi = _cn_range(cn)
+        cutoffs = []
+        for x in anions:
+            band = bond_band(cation, int(valence), x, lo, hi)
+            cutoffs.append(band["cutoff"])
+            anion_cutoff[x] = max(anion_cutoff.get(x, 0.0), band["cutoff"])
+            if frozenset((cation, x)) not in stated_bonds:
+                bonds.append({"atom1": cation, "atom2": x, "weight": 1.0,
+                              "label": f"{cation}-{x} [derived]", **band})
+        if cation not in stated_centres:
+            coords.append({"center_atom": cation,
+                           "neighbor_atom": anions[0] if len(anions) == 1 else anions,
+                           "cn_min": lo, "cn_max": hi, "cutoff_distance": max(cutoffs),
+                           "weight": 1.5, "label": f"{cation}(X) [derived]"})
+
+    out = dict(config)
+    out["bond_constraints"] = bonds
+    out["coordination_constraints"] = coords
+    if "auto_coupling_cutoff" not in config and anion_cutoff:
+        out["auto_coupling_cutoff"] = anion_cutoff
+    return out

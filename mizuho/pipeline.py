@@ -8,6 +8,7 @@ import sys
 from typing import Dict, List
 
 from .composition import _all_charges_zero, discover_compositions, parse_composition
+from .constraints import derive_constraints
 from .config import (
     _lattice_bounds_for_system, augment_coupling_constraints, augment_tetrahedral_bridging,
 )
@@ -45,6 +46,7 @@ def build_sg_config(base_config: dict, sg: int, composition: str = None) -> dict
         sg_config["composition"] = composition
     sg_config["lattice_bounds"] = _lattice_bounds_for_system(
         base_config.get("lattice_bounds", {}), CRYSTAL_SYSTEM_OF_SG.get(sg, "triclinic"))
+    sg_config = derive_constraints(sg_config)
     return augment_tetrahedral_bridging(augment_coupling_constraints(sg_config))
 
 
