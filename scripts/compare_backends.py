@@ -40,6 +40,7 @@ from measure_cont import CONVERGED_MARGIN, _multistart, _setup  # noqa: E402
 from mizuho.objective.energy import compute_error  # noqa: E402
 from mizuho.optimize.basin_hopping import multistart_basin_hopping  # noqa: E402
 from mizuho.optimize.driver import _stage2  # noqa: E402
+import mizuho.optimize.dual_annealing as _da_module  # noqa: E402
 from mizuho.optimize.dual_annealing import multistart_dual_annealing  # noqa: E402
 from mizuho.optimize.endpoints import topology_key  # noqa: E402
 
@@ -82,6 +83,8 @@ def run(name, variant, seed, budget=4):
     common = dict(bounds=bounds, seed=seed, verbose=False, config=cfg,
                   periodic_mask=periodic, seeded_x0=seeded_x0, restart_workers=1,
                   endpoint_ledger=None)
+    lo = np.array([b[0] for b in bounds], dtype=float)
+    hi = np.array([b[1] for b in bounds], dtype=float)
     out = {}
     for backend in BACKENDS:
         tracked = Tracked(obj, limit=None if backend == "cma" else out["cma"]["evaluations"],
@@ -95,7 +98,23 @@ def run(name, variant, seed, budget=4):
                 multistart_basin_hopping(tracked, n_restarts=n1, maxiter=10**6,
                                          stepsize=BH_STEPSIZE, T=BH_T, **common)
             else:
-                multistart_dual_annealing(tracked, n_restarts=n1, maxiter=10**6, **common)
+                # Every minimum dual annealing reports, with its topology
+                # class: the revisit rate inside the chain (ADR-0029 draft).
+                minima, keys = [], {}
+                key_pub = topology_key(pv_ref, cfg)
+
+                def on_minimum(x, f, context):
+                    k = topology_key(np.clip(np.asarray(x), lo, hi), cfg)
+                    minima.append({"f": float(f), "cls": keys.setdefault(k, len(keys)),
+                                   "published": k == key_pub, "context": int(context),
+                                   "evaluations": tracked.n})
+
+                orig = _da_module.dual_annealing
+                _da_module.dual_annealing = functools.partial(orig, callback=on_minimum)
+                try:
+                    multistart_dual_annealing(tracked, n_restarts=n1, maxiter=10**6, **common)
+                finally:
+                    _da_module.dual_annealing = orig
         except Budget:
             pass
         x1, f1 = tracked.best_x, tracked.best_f
@@ -112,6 +131,8 @@ def run(name, variant, seed, budget=4):
             "tier1_same_class": topology_key(np.asarray(p), cfg) == topology_key(pv_ref, cfg),
             "param_vector": [float(v) for v in p],
         }
+        if backend == "dual_annealing":
+            out[backend]["minima"] = minima
     return {"mineral": name, "variant": variant, "seed": seed,
             "error_published": float(err_ref), "bh_T": BH_T, "bh_stepsize": BH_STEPSIZE,
             "backends": out}
