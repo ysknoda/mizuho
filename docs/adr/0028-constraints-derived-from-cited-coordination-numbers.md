@@ -34,6 +34,13 @@ Design review of 2026-10-14/15: settle how constraints are set for an arbitrary 
   trans angles above 150 deg left out (references -18.1 / +20.0 deg from 90). CN 5, 7, 8 and CN
   ranges get none: their references span 60-144 deg. Chosen from data. The hand fixtures' cited
   tetrahedral band [100, 120] was narrower than wollastonite's 122.4 deg.
+- **Anion CN and polymerisation (Q7).** The composition and the cited cation CN fix the mean
+  number of framework cations per anion, m = bonds / anions; each anion's CN is held to
+  [floor(m), ceil(m)] (H left out), replacing the generic auto [2, 4]. For high-valence tetrahedral
+  cations (ADR-0027's T) the same count gives the polymerisation X(T). No number here is read off a
+  reference; all thirteen references fall inside both ranges (diopside O 3-4 and O(Si) 1-2, topaz
+  2-3 and 0-1, corundum and spinel exactly 4). With several anions (topaz O and F) one combined
+  range is used, since which cation bonds which anion is not an input.
 - **Range.** Cations with s0 < 0.25 (Na at CN 6: 0.167) are outside what was validated, where the
   band's long end runs away; they must state their bond constraints, and an error says so.
 
@@ -46,8 +53,5 @@ band (d0 2.566 A against the measured 2.264 A) and sum both miss; recorded as a 
 
 ## Open
 
-- The anion-centred CN range from composition and cation CN (Pauling's second rule), replacing
-  the auto default [2, 4]; polymerisation constraints derived the same way (ADR-0007 showed they
-  are fixed by composition and CN).
 - Whether a search with derived constraints does as well as with the hand-measured fixtures:
   the second half of the validation.

@@ -26,7 +26,8 @@ def test_bond_band_is_the_bond_valence_band():
 def test_derived_constraints_cover_every_cation_and_tolerance():
     out = derive_constraints(_silicate())
     assert {(b["atom1"], b["atom2"]) for b in out["bond_constraints"]} == {("Mg", "O"), ("Si", "O")}
-    cns = {c["center_atom"]: (c["cn_min"], c["cn_max"]) for c in out["coordination_constraints"]}
+    cns = {c["center_atom"]: (c["cn_min"], c["cn_max"]) for c in out["coordination_constraints"]
+           if c["center_atom"] != "O"}
     assert cns == {"Mg": (6, 6), "Si": (4, 4)}
     assert out["bond_valence"]["tolerance"] == {"Mg": 0.2, "Si": 0.4}
     assert set(out["auto_coupling_cutoff"]) == {"O"}
@@ -69,3 +70,17 @@ def test_polyhedron_angle_bands_only_for_cn_4_and_6():
     angles = {a["atom_center"]: (a["angle_min"], a["angle_max"])
               for a in derive_constraints(cfg)["angle_constraints"]}
     assert angles == {"Si": (95.0, 125.0), "Mg": (70.0, 110.0)}
+
+
+def test_anion_cn_and_polymerisation_are_counted_from_the_composition():
+    """Diopside: (4*2 + 6 + 7.5) bonds over 6 O -> O CN in [3, 4]; 8 Si-O
+    bonds over 6 O -> O(Si) in [1, 2] (ADR-0007's {1: 16, 2: 8}). The
+    derived anion constraint replaces the generic auto [2, 4]."""
+    from mizuho.config import augment_coupling_constraints
+    cfg = {"composition": "CaMgSi2O6", "ionic_charges": {"Ca": 2, "Mg": 2, "Si": 4, "O": -2},
+           "coordination_numbers": {"Si": 4, "Mg": 6, "Ca": [7, 8]}}
+    out = augment_coupling_constraints(derive_constraints(cfg))
+    o = {tuple(sorted(c["neighbor_atom"])) if isinstance(c["neighbor_atom"], list)
+         else (c["neighbor_atom"],): (c["cn_min"], c["cn_max"])
+         for c in out["coordination_constraints"] if c["center_atom"] == "O"}
+    assert o == {("Ca", "Mg", "Si"): (3, 4), ("Si",): (1, 2)}

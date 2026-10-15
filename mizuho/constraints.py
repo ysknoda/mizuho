@@ -18,6 +18,9 @@ structure used to supply is derived from that:
 - With H among them, X(H) in [0, 1] for every anion (one H per anion;
   `auto_hydroxyl: false` for hydrates).
 - A bond-valence-sum tolerance of 10% of each cation's valence.
+- Each anion's CN over the framework cations in [floor(m), ceil(m)], m the
+  mean the composition and cation CN imply, and, for high-valence
+  tetrahedral cations, the polymerisation X(T) the same way.
 - X-M-X angle bands for CN exactly 4 ([95, 125] deg) and 6 ([70, 110] deg,
   trans angles above 150 deg left out); none for any other CN.
 
@@ -28,6 +31,7 @@ import math
 from typing import Dict
 
 from .composition import parse_composition
+from .config import TETRAHEDRAL_MIN_VALENCE
 from .data.bond_valence import B_BOND_VALENCE, r0
 
 BAND_VU = 0.16
@@ -125,6 +129,36 @@ def derive_constraints(config: dict) -> dict:
                            "neighbor_atom": anions[0] if len(anions) == 1 else anions,
                            "cn_min": lo, "cn_max": hi, "cutoff_distance": max(cutoffs),
                            "weight": 1.5, "label": f"{cation}(X) [derived]"})
+
+    # Anion coordination and polymerisation, counted from the composition
+    # and the cited cation CN (Pauling's second rule; ADR-0007 found the
+    # distribution fixed this way). The mean m = bonds / anions bounds every
+    # anion to [floor(m), ceil(m)]; no number here is read off a reference.
+    counts = parse_composition(config["composition"])
+    n_anions = sum(counts[x] for x in anions)
+    framework = [c for c in sorted(cns) if c in present and c != "H"]
+    if framework and n_anions:
+        ranges = {c: _cn_range(cns[c]) for c in framework}
+        m_lo = sum(counts[c] * ranges[c][0] for c in framework) / n_anions
+        m_hi = sum(counts[c] * ranges[c][1] for c in framework) / n_anions
+        tetra = [c for c in framework
+                 if charges[c] >= TETRAHEDRAL_MIN_VALENCE and ranges[c] == (4, 4)]
+        m_t = sum(counts[c] * 4 for c in tetra) / n_anions
+        stated_anion = {(c["center_atom"], frozenset(c["neighbor_atom"]) if isinstance(
+            c["neighbor_atom"], list) else frozenset([c["neighbor_atom"]])) for c in coords}
+        for x in anions:
+            groups = [(framework, m_lo, m_hi, "derived, anion CN")]
+            if tetra and set(tetra) != set(framework):
+                groups.append((tetra, m_t, m_t, "derived, polymerisation"))
+            for cats, lo_m, hi_m, tag in groups:
+                if (x, frozenset(cats)) in stated_anion:
+                    continue
+                cut = max(bond_band(c, int(charges[c]), x, *ranges[c])["cutoff"] for c in cats)
+                coords.append({"center_atom": x,
+                               "neighbor_atom": cats[0] if len(cats) == 1 else list(cats),
+                               "cn_min": math.floor(lo_m + 1e-9), "cn_max": math.ceil(hi_m - 1e-9),
+                               "cutoff_distance": cut, "weight": 1.0,
+                               "label": f"{x}({'/'.join(cats)}) [{tag}]"})
 
     # One H per anion at most: an anion with two H would be a water molecule,
     # not a hydroxyl (ADR-0028). Hydrates switch it off with
