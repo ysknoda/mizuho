@@ -192,8 +192,27 @@ derived bonds (every hand fixture). Ideal angles are left out: they move the pub
 and corundum 5-12 %. Sheared cells (forsterite, diopside) are not fixed by this; they are a
 search problem, not a centring one.
 
+## Measured: topaz and adamite with (a), (b) and centring (2026-10-15, x4, seeds 42-46)
+
+| mineral | seed | error | S1 | tier 1 | lattice (%) |
+| --- | --- | --- | --- | --- | --- |
+| topaz | 42 | 3e-6 | yes | fail | a +3.9, b -4.7, c +0.8 |
+| topaz | 43 | 2.2e-2 | no | fail | b +14.3, c -13.7 |
+| topaz | 44 | 1e-8 | yes | fail | b +8.7, c -10.9 |
+| topaz | 45 | 4.2e-6 | yes | fail | a -13.6, c +14.0 |
+| topaz | 46 | 0 | yes | fail | a -13.6, c +13.9 |
+| adamite | 42 | 1.6e-2 | no | fail | within 1.3 |
+| adamite | 43 | 1.9e-10 | yes | fail | b -5.8, c +7.2 |
+| adamite | 44 | 7.8e-6 | yes | fail | a +5.3, b -5.8 |
+| adamite | 45 | 0 | yes | fail | a -6.6, c +7.9 |
+| adamite | 46 | 3.3e-6 | yes | fail | a +3.8, b -5.8, c +5.0 |
+
+Tier 1 stays 0/5 for both (before: 0/5, 0/5); S1 4/5 for both. (a) and (b) remove the points they
+were written for, and the search lands on other zero-error classes instead: the distinguishability
+problem of ADR-0027 is not one missing rule. Centring leaves these cells 4-14 % off; they are
+other classes, so no published cell is there to be pulled back to.
+
 ## Open
 
-- Topaz and adamite re-measured with (a) and (b), seeds 42-46.
 - Sheared cells inside the derived bands (forsterite, diopside): centring on bond lengths does
   not reach them; ideal angles do but break distorted octahedra.
