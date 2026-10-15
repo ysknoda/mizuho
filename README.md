@@ -244,6 +244,22 @@ angle_constraints:
     exclude_neighbor_pairs: [[H, H]]   # skip H-center-H angles (they'd model a water molecule)
 ```
 
+### Constraints derived from cited coordination numbers
+
+For a compound with no reference structure, state the composition, `ionic_charges` and, per cation, its cited coordination number; mizuho derives the bond bands, cutoffs, coordination, angle and bond-valence constraints from them ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)). A constraint the config states for the same pair wins.
+
+```yaml
+coordination_numbers: {Al: 6, Si: 4}
+bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every anion
+```
+
+| Key | Default | Purpose |
+|---|---|---|
+| `coordination_numbers` | none | Cited CN per cation, an integer or `[min, max]`; turns derivation on |
+| `bonded_anions` | every anion | Per cation, the anions it bonds (a cited fact); the others are held outside its shell |
+| `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
+| `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
+
 ### Automatic anion coupling
 
 Whenever `ionic_charges` is set and some cation-centred `coordination_constraint`/`angle_constraint` references an anion as its neighbour (directly, via `X`, or via an explicit list) but that anion has no constraint of its own as a center, mizuho auto-injects a default anion-centred pair (`neighbor_atom`/`atom_neighbor: X`) so the cation polyhedra sharing that anion are coupled to a mutually consistent geometry instead of drifting apart independently. Tuning/opt-out keys:
@@ -259,7 +275,7 @@ Whenever `ionic_charges` is set and some cation-centred `coordination_constraint
 
 ### Penalty normalisation
 
-Every penalty term divides its deviation by a natural physical scale for that term before squaring: the target band's own midpoint for bond, angle, coordination-number, volume, aspect-ratio and cell-validity terms; `distance_min` for repulsion; the cell's total absolute ionic charge for charge balance. All terms are therefore comparable relative deviations and each constraint's `weight` means what it says. Without this, the coordination-number term, a raw count, made up 65-99% of the total error across this project's own fixtures regardless of the nominal weights. The overlap term is already relative by construction; `hybridisation_constraints` stay in raw degrees.
+Every penalty term divides its deviation by a natural physical scale for that term before squaring: the target band's own midpoint for bond, angle, coordination-number (floored at half a neighbour, so a CN band of [0, 0] stays finite), volume, aspect-ratio and cell-validity terms; `distance_min` for repulsion; the cell's total absolute ionic charge for charge balance. All terms are therefore comparable relative deviations and each constraint's `weight` means what it says. Without this, the coordination-number term, a raw count, made up 65-99% of the total error across this project's own fixtures regardless of the nominal weights. The overlap term is already relative by construction; `hybridisation_constraints` stay in raw degrees.
 
 Normalisation is always on. The former `normalize_penalties` key was removed and a config that still sets it is rejected with an error ([ADR-0009](docs/adr/0009-always-normalise-penalties.md)): the gates had been scoring the raw objective while every search optimised the normalised one.
 

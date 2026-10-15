@@ -129,9 +129,31 @@ scored under both configs. Points per mineral: diopside 29, topaz 25, adamite 25
     second O away from H. Its Zn polyhedra also go unconstrained (O-Zn-O 44-147 deg): adamite's
     Zn is cited as CN [5, 6], which gets no angle band.
 
+## Decided: anion partition (a) and hydrogen-bond geometry (b) (2026-10-15)
+
+- **(a) `bonded_anions`.** Optional, per cation, the anions it bonds, a cited fact like its CN
+  (topaz: `{Si: [O]}`). The cation's bands, CN and angles run over those anions only, and every
+  other anion is held outside the shell it would have (CN [0, 0] at that pair's derived cutoff).
+  The anion CN and polymerisation ranges are counted over the anions the cations bond, so topaz's
+  polymerisation becomes O(Si) exactly 1 (4 Si-O bonds over 4 O) instead of [0, 1] over O and F.
+  Without the key a cation bonds every anion, as before. The CN term's scale gets a floor of half
+  a neighbour, so a [0, 0] band does not divide by zero (every band with cn_max >= 1 already had
+  a midpoint of at least 0.5: unchanged). The reference gate fills it from the hand fixtures
+  (topaz Si); every reference still scores as before.
+- **(b) Hydrogen-bond angle.** With H at CN 1, any anion within 2.2 A of H sits at 130-180 deg
+  from the O-H bond: moderate and strong hydrogen bonds have H...A <= 2.2 A and D-H...A >= 130
+  deg; weak ones (beyond 2.2 A) get no band (Jeffrey 1997, as tabulated by Steiner, *Angew.
+  Chem. Int. Ed.* 41, 48, 2002, Table 1; not read in the original from this environment).
+  Two acceptors both inside 2.2 A cannot meet it, so short three-centre bonds are excluded with
+  it; `auto_hydrogen_bond: false` switches it off. Adamite's reference (acceptor at 2.32 A) is
+  unaffected.
+- **Effect on the recorded points.** Topaz derived seed 45 (Si with two F) scores 25 instead of
+  0. Adamite derived seed 44 (two O at 1.67 A, 71 deg from the O-H bond) scores 0.30 instead of 0;
+  seed 46 0.084 instead of 1.7e-4; seed 43 3e-4 instead of 0. The other topaz points (seeds 42,
+  43, 46) and adamite seed 45 stay at zero: they differ from the published structure in ways
+  neither rule touches.
+
 ## Open
 
-- Anion partition: whether to let the user state, per cation, which anions it bonds (topaz Si to
-  O only), as a cited fact.
-- An H...X floor beyond the H shell (a hydrogen-bond acceptor distance), from a cited source.
+- Topaz and adamite re-measured with (a) and (b), seeds 42-46.
 - Holding the lattice when the bands are wide (tier 2).

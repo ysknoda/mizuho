@@ -82,6 +82,18 @@ def _midpoint_scale(vmin, vmax, eps: float = _SCALE_EPS) -> float:
     return max((vmin + vmax) / 2.0, eps)
 
 
+# A coordination band's scale has a floor of half a neighbour: CN [0, 0]
+# (an anion a cation does not bond, ADR-0028 (a)) has midpoint 0, and the
+# relative deviation would otherwise divide by _SCALE_EPS. Every band with
+# cn_max >= 1 has a midpoint of at least 0.5 already, so it is unchanged.
+CN_SCALE_FLOOR = 0.5
+
+
+def _cn_scale(cn_min, cn_max) -> float:
+    """_midpoint_scale for a coordination band, floored at CN_SCALE_FLOOR."""
+    return max(_midpoint_scale(cn_min, cn_max), CN_SCALE_FLOOR)
+
+
 def _smootherstep_weight(distances: np.ndarray, cutoff: float, width: float) -> np.ndarray:
     """Per-neighbour weight of the soft coordination count: exactly 1
     inside cutoff - 3*width, exactly 0 beyond cutoff + 3*width, 0.5 at the

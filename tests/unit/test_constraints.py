@@ -84,3 +84,57 @@ def test_anion_cn_and_polymerisation_are_counted_from_the_composition():
          else (c["neighbor_atom"],): (c["cn_min"], c["cn_max"])
          for c in out["coordination_constraints"] if c["center_atom"] == "O"}
     assert o == {("Ca", "Mg", "Si"): (3, 4), ("Si",): (1, 2)}
+
+
+def _topaz(**extra):
+    cfg = {"composition": "Al2SiO4F2", "ionic_charges": {"Al": 3, "Si": 4, "O": -2, "F": -1},
+           "coordination_numbers": {"Al": 6, "Si": 4}}
+    cfg.update(extra)
+    return cfg
+
+
+def test_bonded_anions_restrict_a_cation_to_its_anions():
+    """ADR-0028 (a): Si bonds O only, so Si gets no Si-F band, its CN and
+    angles run over O, and F is held outside the Si shell at CN 0."""
+    out = derive_constraints(_topaz(bonded_anions={"Si": ["O"]}))
+    pairs = {(b["atom1"], b["atom2"]) for b in out["bond_constraints"]}
+    assert pairs == {("Al", "F"), ("Al", "O"), ("Si", "O")}
+    si = {c["label"]: c for c in out["coordination_constraints"] if c["center_atom"] == "Si"}
+    assert si["Si(X) [derived]"]["neighbor_atom"] == "O"
+    assert (si["Si(F) [derived, not bonded]"]["cn_min"],
+            si["Si(F) [derived, not bonded]"]["cn_max"]) == (0, 0)
+    angle = [a for a in out["angle_constraints"] if a["atom_center"] == "Si"]
+    assert angle[0]["atom_neighbor"] == "O"
+    # Polymerisation over the anions Si bonds: 4 Si-O bonds over 4 O.
+    poly = [c for c in out["coordination_constraints"] if "polymerisation" in c["label"]]
+    assert [(c["center_atom"], c["cn_min"], c["cn_max"]) for c in poly] == [("O", 1, 1)]
+
+
+def test_without_bonded_anions_a_cation_bonds_every_anion():
+    out = derive_constraints(_topaz())
+    assert ("Si", "F") in {(b["atom1"], b["atom2"]) for b in out["bond_constraints"]}
+    poly = [c for c in out["coordination_constraints"] if "polymerisation" in c["label"]]
+    assert {c["center_atom"] for c in poly} == {"O", "F"}
+
+
+def test_bonded_anions_must_name_anions_present():
+    with pytest.raises(ValueError, match="bonded_anions"):
+        derive_constraints(_topaz(bonded_anions={"Si": ["Cl"]}))
+
+
+def _hydroxide(**extra):
+    cfg = {"composition": "Zn2AsO5H", "ionic_charges": {"Zn": 2, "As": 5, "O": -2, "H": 1},
+           "coordination_numbers": {"As": 4, "Zn": [5, 6], "H": 1}}
+    cfg.update(extra)
+    return cfg
+
+
+def test_hydrogen_bond_angle_band_and_its_opt_out():
+    """ADR-0028 (b): an acceptor within 2.2 A of H sits at 130 deg or more
+    from the O-H bond (Jeffrey 1997, via Steiner 2002)."""
+    out = derive_constraints(_hydroxide())
+    hb = [a for a in out["angle_constraints"] if a["atom_center"] == "H"]
+    assert len(hb) == 1
+    assert (hb[0]["angle_min"], hb[0]["angle_max"], hb[0]["angle_cutoff"]) == (130.0, 180.0, 2.2)
+    off = derive_constraints(_hydroxide(auto_hydrogen_bond=False))
+    assert not [a for a in off["angle_constraints"] if a["atom_center"] == "H"]

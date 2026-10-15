@@ -16,7 +16,7 @@ from ..structure import build_structure
 from .bond_valence import bond_valence_term
 from .penalties import (
     _gray_band_penalty, _integrality_applies, reject_removed_keys,
-    _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
+    _estimate_volume, _expand_wildcard, _cn_scale, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
 )
@@ -345,7 +345,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         cnmin, cnmax = cc["cn_min"], cc["cn_max"]
         cutoff   = cc["cutoff_distance"]
         w        = cc.get("weight", 1.0)
-        scale    = _midpoint_scale(cnmin, cnmax)
+        scale    = _cn_scale(cnmin, cnmax)
         width    = cc.get("smoothing_width", 0.10)
 
         ci_arr = sp_idx.get(ce, np.array([], dtype=int))

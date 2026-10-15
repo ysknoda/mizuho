@@ -17,7 +17,7 @@ from .bond_valence import bond_valence_term
 from .penalties import (
     GRAY_BAND_WIDTHS, _gray_band_penalty, _integrality_applies,
     reject_removed_keys,
-    _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
+    _estimate_volume, _expand_wildcard, _cn_scale, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
 )
@@ -294,7 +294,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         cnmin, cnmax = cc["cn_min"], cc["cn_max"]
         cutoff       = cc["cutoff_distance"]
         w            = cc.get("weight", 1.0)
-        scale        = _midpoint_scale(cnmin, cnmax)
+        scale        = _cn_scale(cnmin, cnmax)
         label        = cc.get("label", f"{ce}({neigh_spec})")
 
         ci_arr = sp_idx.get(ce, np.array([], dtype=int))

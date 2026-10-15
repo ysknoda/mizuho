@@ -331,15 +331,24 @@ def test_dft_same_structure_impostor_is_in_the_published_class(stem):
 
 def _minimal_config(base):
     q = base.get("ionic_charges") or {}
-    cns = {}
+    cns, bonded = {}, {}
     for c in base.get("coordination_constraints", []):
         if q.get(c["center_atom"], 0) > 0:
             lo, hi = c["cn_min"], c["cn_max"]
             cns[c["center_atom"]] = lo if lo == hi else [lo, hi]
+            # The anions a cation bonds, where the fixture names a subset
+            # (topaz Si: O only; ADR-0028 (a)).
+            nb = c["neighbor_atom"]
+            nb = [nb] if isinstance(nb, str) else list(nb)
+            anions = sorted(e for e, v in q.items() if v < 0)
+            if "X" not in nb and sorted(nb) != anions:
+                bonded[c["center_atom"]] = sorted(nb)
     out = {k: base[k] for k in ("composition", "ionic_charges", "charge_tolerance_min",
                                  "charge_tolerance_max", "lattice_bounds", "volume_constraint")
            if k in base}
     out["coordination_numbers"] = cns
+    if bonded:
+        out["bonded_anions"] = bonded
     return out
 
 
