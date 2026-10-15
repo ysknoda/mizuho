@@ -15,6 +15,9 @@ structure used to supply is derived from that:
 - One cation-centred coordination constraint over every anion present, with
   the largest of those cutoffs, and the anion-centred auto-coupling cutoff
   per anion (the largest cutoff of any cation bonding it).
+- With H among them, X(H) in [0, 1] for every anion (one H per anion;
+  `auto_hydroxyl: false` for hydrates).
+- A bond-valence-sum tolerance of 10% of each cation's valence.
 
 A constraint the config already states for the same pair wins.
 """
@@ -33,6 +36,10 @@ GRAY_HALF_WIDTHS = 3.0
 # (Na at CN 6: s0 = 0.167, d_max 1.8 A past R0), so such cations need their
 # bond constraints stated.
 MIN_S0 = 0.25
+# Bond-valence-sum tolerance as a fraction of the cation's valence
+# (ADR-0028, chosen from the experimental references: the largest is spinel
+# Mg at 9%).
+BVS_TOLERANCE_FRACTION = 0.10
 
 
 def _cn_range(value):
@@ -116,6 +123,18 @@ def derive_constraints(config: dict) -> dict:
                                "label": f"{x}(H) [derived]"})
 
     out = dict(config)
+    # Bond-valence tolerance: 10% of each cation's valence, the smallest
+    # fraction every experimental reference meets (spinel Mg 9%, anatase Ti
+    # 7%). A tolerance the config states for an element wins.
+    bv = config.get("bond_valence", {})
+    if bv is not False:
+        bv = dict(bv or {})
+        tol = dict(bv.get("tolerance", {}))
+        for cation in cns:
+            if cation in present and cation not in tol:
+                tol[cation] = round(BVS_TOLERANCE_FRACTION * charges[cation], 3)
+        bv["tolerance"] = tol
+        out["bond_valence"] = bv
     out["bond_constraints"] = bonds
     out["coordination_constraints"] = coords
     if "auto_coupling_cutoff" not in config and anion_cutoff:

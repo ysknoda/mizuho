@@ -320,3 +320,38 @@ def test_different_class_impostor_scores_above_the_published_structure(path):
 @pytest.mark.parametrize("stem", sorted(DFT_SAME_STRUCTURE))
 def test_dft_same_structure_impostor_is_in_the_published_class(stem):
     assert _SAME[stem], f"{stem}: DFT relaxes it to the published structure (ADR-0019)"
+
+
+# ---------------------------------------------------------------------------
+# ADR-0028: every reference regenerated from composition, charges, cited
+# coordination numbers and the density-derived volume alone. Pyrite is the
+# known exception: Brese & O'Keeffe's Fe-S R0 does not fit low-spin Fe(II)
+# (ADR-0016), so neither its band nor its bond-valence sum holds.
+# ---------------------------------------------------------------------------
+
+def _minimal_config(base):
+    q = base.get("ionic_charges") or {}
+    cns = {}
+    for c in base.get("coordination_constraints", []):
+        if q.get(c["center_atom"], 0) > 0:
+            lo, hi = c["cn_min"], c["cn_max"]
+            cns[c["center_atom"]] = lo if lo == hi else [lo, hi]
+    out = {k: base[k] for k in ("composition", "ionic_charges", "charge_tolerance_min",
+                                 "charge_tolerance_max", "lattice_bounds", "volume_constraint")
+           if k in base}
+    out["coordination_numbers"] = cns
+    return out
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param(n, marks=pytest.mark.xfail(strict=True, reason="Fe-S R0 misfit (ADR-0016)"))
+    if n == "pyrite_fes2" else n
+    for n in sorted(_REFS)])
+def test_derived_config_scores_zero_at_the_reference(name):
+    ref = _REFS[name]
+    _, pv, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    full = dict(build_sg_config(_minimal_config(base), ref.sg))
+    full["wyckoff_sites"] = assignments_to_sites(asg)
+    total = error_breakdown(pv, full)["total"]
+    assert total < 1e-3, f"{name}: derived config scores {total:.6f} at its reference"

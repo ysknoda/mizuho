@@ -79,3 +79,7 @@ surround the bridging oxygen (Ca2 against Ca + Mg), which no bridging angle cons
 
 Integrality's removal alone moves diopside from the ablation's (iii) (seed 42: other class) to
 tier 1 on three of five seeds here.
+
+Decided (2026-10-15): (A) stays. It is a cited fact every reference meets and it rejects
+other-class points in the objective; its effect on tier 1 is inside the seed scatter.
+
