@@ -18,6 +18,8 @@ structure used to supply is derived from that:
 - With H among them, X(H) in [0, 1] for every anion (one H per anion;
   `auto_hydroxyl: false` for hydrates).
 - A bond-valence-sum tolerance of 10% of each cation's valence.
+- X-M-X angle bands for CN exactly 4 ([95, 125] deg) and 6 ([70, 110] deg,
+  trans angles above 150 deg left out); none for any other CN.
 
 A constraint the config already states for the same pair wins.
 """
@@ -40,6 +42,11 @@ MIN_S0 = 0.25
 # (ADR-0028, chosen from the experimental references: the largest is spinel
 # Mg at 9%).
 BVS_TOLERANCE_FRACTION = 0.10
+# X-M-X angle bands for the two coordinations with one polyhedron shape
+# (ADR-0028, chosen from the references: tetrahedra deviate -7.7/+12.9 deg
+# from 109.47, octahedra -18.1/+20.0 deg from 90). Octahedral trans angles
+# (above 150 deg) are left out. Other CN, and CN given as a range, get none.
+POLYHEDRON_ANGLES = {4: (95.0, 125.0, None), 6: (70.0, 110.0, 150.0)}
 
 
 def _cn_range(value):
@@ -85,6 +92,8 @@ def derive_constraints(config: dict) -> dict:
     stated_bonds = {frozenset((b["atom1"], b["atom2"])) for b in bonds if isinstance(b["atom2"], str)}
     stated_centres = {c["center_atom"] for c in coords
                       if charges.get(c["center_atom"], 0) > 0}
+    angles = list(config.get("angle_constraints", []))
+    stated_angle_centres = {a["atom_center"] for a in angles}
     anion_cutoff: Dict[str, float] = {}
 
     for cation, cn in sorted(cns.items()):
@@ -102,6 +111,15 @@ def derive_constraints(config: dict) -> dict:
             if frozenset((cation, x)) not in stated_bonds:
                 bonds.append({"atom1": cation, "atom2": x, "weight": 1.0,
                               "label": f"{cation}-{x} [derived]", **band})
+        if lo == hi and lo in POLYHEDRON_ANGLES and cation not in stated_angle_centres:
+            a_lo, a_hi, trans = POLYHEDRON_ANGLES[lo]
+            entry = {"atom_center": cation,
+                     "atom_neighbor": anions[0] if len(anions) == 1 else anions,
+                     "angle_min": a_lo, "angle_max": a_hi, "angle_cutoff": max(cutoffs),
+                     "weight": 1.0, "label": f"X-{cation}-X [derived]"}
+            if trans is not None:
+                entry["ignore_trans_above"] = trans
+            angles.append(entry)
         if cation not in stated_centres:
             coords.append({"center_atom": cation,
                            "neighbor_atom": anions[0] if len(anions) == 1 else anions,
@@ -136,6 +154,7 @@ def derive_constraints(config: dict) -> dict:
         bv["tolerance"] = tol
         out["bond_valence"] = bv
     out["bond_constraints"] = bonds
+    out["angle_constraints"] = angles
     out["coordination_constraints"] = coords
     if "auto_coupling_cutoff" not in config and anion_cutoff:
         out["auto_coupling_cutoff"] = anion_cutoff

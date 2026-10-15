@@ -61,3 +61,11 @@ def test_hydroxyl_rule_and_its_opt_out():
                for c in out["coordination_constraints"])
     off = derive_constraints(dict(cfg, auto_hydroxyl=False))
     assert not any(c["neighbor_atom"] == "H" for c in off["coordination_constraints"])
+
+
+def test_polyhedron_angle_bands_only_for_cn_4_and_6():
+    cfg = {"composition": "CaMgSi2O6", "ionic_charges": {"Ca": 2, "Mg": 2, "Si": 4, "O": -2},
+           "coordination_numbers": {"Si": 4, "Mg": 6, "Ca": [7, 8]}}
+    angles = {a["atom_center"]: (a["angle_min"], a["angle_max"])
+              for a in derive_constraints(cfg)["angle_constraints"]}
+    assert angles == {"Si": (95.0, 125.0), "Mg": (70.0, 110.0)}
