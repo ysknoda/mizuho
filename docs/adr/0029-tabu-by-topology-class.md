@@ -35,3 +35,15 @@ from zero error.
   (ADR-0020's backend comparison, hand fixture). The comparison is resumed with derived configs,
   recording every dual-annealing minimum with its class, to measure the revisit rate inside its
   chain before any tabu is built into it.
+
+## Measured: backends with derived configs, dual-annealing minima by class
+
+`scripts/compare_backends.py --variant derived`, x4, equal evaluations; every minimum dual
+annealing reports is classed.
+
+| run | CMA-ES | basin hopping | dual annealing | DA minima: reported / distinct / revisits |
+| --- | --- | --- | --- | --- |
+| topaz seed 42 (312k evaluations) | 0, S1, other class | 1.3e-2 | 0, S1, other class | 13 / 11 / 2 |
+
+Dual annealing reports few minima (13 in 312k evaluations: each is a full local search) and
+revisits 2 of them; the published class is not among them.
