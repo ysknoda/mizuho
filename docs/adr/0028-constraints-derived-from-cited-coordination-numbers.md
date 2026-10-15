@@ -153,6 +153,34 @@ scored under both configs. Points per mineral: diopside 29, topaz 25, adamite 25
   43, 46) and adamite seed 45 stay at zero: they differ from the published structure in ways
   neither rule touches.
 
+## Measured: centring inside the bands (c) (2026-10-15)
+
+`scripts/centring_experiment.py`: from each derived tier-1 end point, and from the published
+structure, L-BFGS-B on E + 0.01 E_ideal, where E_ideal is the derived objective with each derived
+bond band shrunk to d0 = R0 - b ln(V / CN) ("bonds"), each derived polyhedron angle band to its
+ideal angle ("angles"), or both. Lattice deviation from the published cell, in %; every point
+keeps E <= 1e-4 and its class.
+
+| point | before | both | bonds | angles |
+| --- | --- | --- | --- | --- |
+| wurtzite end | a -5.3, c +11.3 | -0.7, +1.2 | -0.7, +1.3 | -2.4, +5.5 |
+| forsterite end | a -8.2, c +5.6 | within 1.7 | a -8.3, c +5.3 | within 1.6 |
+| corundum end | a -2.9, c +3.9 | -3.4, +4.1 | -2.8, +3.9 | -4.0, +5.5 |
+| anatase end | a +2.4, c -2.7 | +6.4, -12.0 | +2.7, -2.7 | +4.8, -9.2 |
+| diopside seed 45 | up to 7.4 | within 1.5 | up to 7.4 | not run |
+| diopside seeds 44, 46 | up to 7.4 / 6.6 | unchanged / 6.3 | unchanged / 6.5 | not run |
+| spinel, sphalerite, quartz, fluorite | within 1.2 | within 1.5 | within 1.0 | not run |
+| anatase published | 0 | +6.4, -12.0 | +2.1, +0.1 | +4.8, -9.2 |
+| corundum published | 0 | -2.9, +5.5 | 0 | -4.0, +5.5 |
+| others, published | 0 | within 2.0 | within 0.2 | |
+
+- Ideal bond lengths pull a strained cell back (wurtzite) and leave every published structure
+  within 2.1 %. Ideal angles pull a sheared cell back (forsterite, diopside 45) but push the
+  published anatase and corundum 5-12 % off: their octahedra are distorted by edge and face
+  sharing, and an ideal octahedron is the wrong target.
+- A local minimisation does not move points pinned on several bounds (diopside 44).
+- Easy minerals' tier 2: 5/8 before; 6/8 with "bonds" or "both" (different sixes).
+
 ## Open
 
 - Topaz and adamite re-measured with (a) and (b), seeds 42-46.
