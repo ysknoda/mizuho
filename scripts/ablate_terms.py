@@ -12,6 +12,9 @@ tests/integration/test_search_gates.py) under one of four objectives:
        volume is in (the variants above add terms cumulatively)
   notxt the current code without the automatic T-X-T bridging band
        (ADR-0027), its comparison run
+  derived the config regenerated from composition, charges, cited CN and
+       the density-derived volume alone (ADR-0028), with the fixture's
+       optimisation settings
 
 and records Stage-1 convergence, tier 1 (topology class) and tier 2
 (lattice, bounds) to <out>/<mineral>_<variant>.json.
@@ -47,7 +50,7 @@ from mizuho.optimize.endpoints import topology_key  # noqa: E402
 from mizuho.pipeline import build_sg_config  # noqa: E402
 from mizuho.structure import assignments_to_sites  # noqa: E402
 
-VARIANTS = ("i", "ii", "iii", "iv", "v", "notxt")
+VARIANTS = ("i", "ii", "iii", "iv", "v", "notxt", "derived")
 BUDGET = 4
 SEED = 42
 CONVERGED_MARGIN = 1e-3
@@ -82,6 +85,9 @@ def _apply(variant: str, base: dict) -> dict:
 def _config(name: str, variant: str):
     ref = _REFS[name]
     base = yaml.safe_load(open(ROOT / FIXTURES / f"{ref.fixture}.yaml"))
+    if variant == "derived":
+        from test_reference_structure_gate import _minimal_config
+        base = dict(_minimal_config(base), optimization=base.get("optimization", {}))
     base = _apply(variant, base)
     cfg = build_sg_config(base, ref.sg)
     _, pv, asg = ref.build()
