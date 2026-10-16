@@ -20,7 +20,7 @@ Restarts almost never revisit a class. Most end at a local minimum with error 1e
 zero-error other class is the rarer failure. The landscape has many classes and the published
 one is rarely hit, so a tabu across restarts has almost nothing to act on.
 
-**Inside a basin-hopping chain** (`bh_revisits` measurement, diopside derived, seed 42, T 0.01,
+**Inside a basin-hopping chain** (`scripts/bh_revisits.py`, diopside derived, seed 42, T 0.01,
 step 0.1, 168 hops before a container restart): 88 distinct classes, 74 hops (46 %) landing in a
 class already visited, 18 hops accepted, lowest error 0.048, published class never reached.
 Revisits are frequent inside a chain, but this chain barely moves (11 % accepted) and stays far
