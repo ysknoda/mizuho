@@ -153,14 +153,19 @@ form is gone.
 
 ## How it works
 
-Two execution modes, selected by whether `spacegroup` is given (`mode` may
-also be set explicitly to `single_spacegroup` / `auto_spacegroup` for
-clarity; it must then agree with whether `spacegroup` is present):
+Two execution modes. Mode A runs when `spacegroup` is given. Mode B is
+experimental and opt-in: it runs only with `mode: auto_spacegroup` and
+`spacegroup` omitted, because its known-answer tests do not pass yet (NaCl is
+detected as P4mm, 99, instead of Fm-3m, 225;
+[ADR-0021](docs/adr/0021-auto-spacegroup-search-stays-default-only-if-it-reaches-known-answers.md)).
+A config with neither is rejected. `mode: single_spacegroup` may spell out
+mode A; `mode` must agree with whether `spacegroup` is present:
 
 1. **Mode A -- single space group** (`spacegroup: <1-230>`): run the
    Wyckoff-assignment search and numerical optimisation directly against
    the given space group.
-2. **Mode B -- automatic space-group search** (`spacegroup` omitted): a
+2. **Mode B -- automatic space-group search, experimental**
+   (`mode: auto_spacegroup`, `spacegroup` omitted): a
    hierarchical search over crystal system -> point group ->
    symmorphic/non-symmorphic -> individual space group selects promising
    candidates before handing each one to mode A's pipeline. Selection uses
@@ -172,7 +177,13 @@ clarity; it must then agree with whether `spacegroup` is present):
    after enough PUCT visits -- so budget concentrates on the
    highest-promise part of the tree without ever fully excluding the rest.
    Set `spacegroup_search.strategy: flat` to use the original 3-stage
-   screening instead.
+   screening instead, or `exhaustive` to run every one of the 230 groups
+   through mode A's pipeline (hours for a binary compound;
+   `spacegroup_search.spacegroups` restricts it to a subset). Every
+   strategy ranks the entries that satisfy the constraints by symmetry
+   first, so a structure is reported in its highest group rather than in a
+   subgroup that also reaches zero error
+   ([ADR-0026](docs/adr/0026-exhaustive-spacegroup-strategy-and-symmetry-first-ranking.md)).
 
 Once a space group is fixed (by either mode), the shared pipeline is:
 
@@ -202,15 +213,15 @@ commonly used top-level keys are:
 | Key | Purpose |
 |---|---|
 | `composition` | Target chemical formula, e.g. `"BaTiO3"` |
-| `spacegroup` | Space-group number (1-230); omit for auto-search (mode B) |
-| `mode` | Optional explicit `single_spacegroup` / `auto_spacegroup`; must agree with whether `spacegroup` is set |
+| `spacegroup` | Space-group number (1-230); required unless `mode: auto_spacegroup` |
+| `mode` | `auto_spacegroup` opts in to the experimental automatic search (mode B, `spacegroup` omitted); `single_spacegroup` is an optional spelling of mode A |
 | `ionic_charges` | `{element: charge}` for ionic-mode searches |
 | `lattice_bounds` | Per-axis `[min, max]` bounds for lattice constants |
 | `bond_constraints` | List of `{atom1, atom2, distance_min, distance_max, weight}` |
 | `angle_constraints` | List of `{atom_center, atom_neighbor, angle_min, angle_max, weight, exclude_neighbor_pairs}` |
 | `coordination_constraints` | List of `{center_atom, neighbor_atom, cn_min, cn_max, cutoff_distance}` |
 | `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle |
-| `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening |
+| `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening, `strategy: exhaustive` (optional `spacegroups`, and `record: file.jsonl` to record each group and resume) for all 230 groups |
 | `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ...; `topology_grouping` (see below) |
 | `auto_composition` | Set `true` for fully automatic composition + structure discovery |
 | `composition_pool` | List of composition strings to search over |
@@ -233,6 +244,23 @@ angle_constraints:
     exclude_neighbor_pairs: [[H, H]]   # skip H-center-H angles (they'd model a water molecule)
 ```
 
+### Constraints derived from cited coordination numbers
+
+For a compound with no reference structure, state the composition, `ionic_charges` and, per cation, its cited coordination number; mizuho derives the bond bands, cutoffs, coordination, angle and bond-valence constraints from them ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)). A constraint the config states for the same pair wins.
+
+```yaml
+coordination_numbers: {Al: 6, Si: 4}
+bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every anion
+```
+
+| Key | Default | Purpose |
+|---|---|---|
+| `coordination_numbers` | none | Cited CN per cation, an integer or `[min, max]`; turns derivation on |
+| `bonded_anions` | every anion | Per cation, the anions it bonds (a cited fact); the others are held outside its shell |
+| `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
+| `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
+| `optimization.centring` | `true` | After Stage 2, move a zero-error point to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back |
+
 ### Automatic anion coupling
 
 Whenever `ionic_charges` is set and some cation-centred `coordination_constraint`/`angle_constraint` references an anion as its neighbour (directly, via `X`, or via an explicit list) but that anion has no constraint of its own as a center, mizuho auto-injects a default anion-centred pair (`neighbor_atom`/`atom_neighbor: X`) so the cation polyhedra sharing that anion are coupled to a mutually consistent geometry instead of drifting apart independently. Tuning/opt-out keys:
@@ -244,11 +272,11 @@ Whenever `ionic_charges` is set and some cation-centred `coordination_constraint
 | `auto_coupling_cn_range` | `[2, 4]` | Override the injected `cn_min`/`cn_max` |
 | `auto_coupling_angle_range` | `[80, 160]` | Override the injected `angle_min`/`angle_max` |
 | `auto_coupling_weight` | `1.0` | Override the injected weight |
-| `auto_coupling_exclude_hh` | `true` | Auto-add `exclude_neighbor_pairs: [[H, H]]` to the injected angle constraint whenever H is one of the coupled cations (an H-center-H angle would model a water molecule, not the intended cation-anion-cation bridging geometry); set `false` to disable |
+| `auto_coupling_exclude_hh` | `true` | Only when H is the sole cation: auto-add `exclude_neighbor_pairs: [[H, H]]` to the injected angle constraint. Whenever other cations are present, the injected constraints name those cations and leave H out entirely ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)) |
 
 ### Penalty normalisation
 
-Every penalty term divides its deviation by a natural physical scale for that term before squaring: the target band's own midpoint for bond, angle, coordination-number, volume, aspect-ratio and cell-validity terms; `distance_min` for repulsion; the cell's total absolute ionic charge for charge balance. All terms are therefore comparable relative deviations and each constraint's `weight` means what it says. Without this, the coordination-number term, a raw count, made up 65-99% of the total error across this project's own fixtures regardless of the nominal weights. The overlap term is already relative by construction; `hybridisation_constraints` stay in raw degrees.
+Every penalty term divides its deviation by a natural physical scale for that term before squaring: the target band's own midpoint for bond, angle, coordination-number (floored at half a neighbour, so a CN band of [0, 0] stays finite), volume, aspect-ratio and cell-validity terms; `distance_min` for repulsion; the cell's total absolute ionic charge for charge balance. All terms are therefore comparable relative deviations and each constraint's `weight` means what it says. Without this, the coordination-number term, a raw count, made up 65-99% of the total error across this project's own fixtures regardless of the nominal weights. The overlap term is already relative by construction; `hybridisation_constraints` stay in raw degrees.
 
 Normalisation is always on. The former `normalize_penalties` key was removed and a config that still sets it is rejected with an error ([ADR-0009](docs/adr/0009-always-normalise-penalties.md)): the gates had been scoring the raw objective while every search optimised the normalised one.
 

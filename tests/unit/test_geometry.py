@@ -189,10 +189,12 @@ def _mini_config_for(specs):
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(strict=False, reason=("since ADR-0009 (normalised penalties) the known-infeasible AsO4 shell "
-    "scores below the feasible one: 0.0359 vs 0.030-0.051 (solve_local_shell, seeds "
-    "42-44) and 0.0359 vs 0.077-0.204 (staged, seeds 42-43). The raw ~28 deg angle "
-    "miss that separated them is now (28/110)^2-sized. Recorded, not retuned"))
+@pytest.mark.xfail(strict=False, reason=("normalised units (ADR-0009): no restart budget up to x4 "
+    "separates the two AsO4 shells on every seed (scripts/phase1_ladder.py, ADR-0020). "
+    "solve_local_shell: the infeasible shell plateaus at 0.0331; the feasible one reaches "
+    "0.0 on seeds 43-44 at x4 but stays at 0.0541 on seed 42. Staged ranking: the "
+    "infeasible shell ranks first on seed 43 at x2 and x4. The raw-unit thresholds "
+    "(2.5, 3.5) below predate ADR-0009. Recorded, not retuned"))
 def test_solve_local_shell_separates_feasible_from_infeasible_topology():
     """As@4g + 2x O@4g + O@8h (feasible: analytically proven to reach
     within ~1.7 degrees of the ideal tetrahedral angle -- see
@@ -484,10 +486,12 @@ def test_staged_shortlist_size_is_honoured_and_remainder_is_inf():
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(strict=False, reason=("since ADR-0009 (normalised penalties) the known-infeasible AsO4 shell "
-    "scores below the feasible one: 0.0359 vs 0.030-0.051 (solve_local_shell, seeds "
-    "42-44) and 0.0359 vs 0.077-0.204 (staged, seeds 42-43). The raw ~28 deg angle "
-    "miss that separated them is now (28/110)^2-sized. Recorded, not retuned"))
+@pytest.mark.xfail(strict=False, reason=("normalised units (ADR-0009): no restart budget up to x4 "
+    "separates the two AsO4 shells on every seed (scripts/phase1_ladder.py, ADR-0020). "
+    "solve_local_shell: the infeasible shell plateaus at 0.0331; the feasible one reaches "
+    "0.0 on seeds 43-44 at x4 but stays at 0.0541 on seed 42. Staged ranking: the "
+    "infeasible shell ranks first on seed 43 at x2 and x4. The raw-unit thresholds "
+    "(2.5, 3.5) below predate ADR-0009. Recorded, not retuned"))
 def test_staged_ranking_preserves_feasible_over_infeasible_at_scale():
     """The property that actually matters end to end: even when the
     pool is padded well past stage1_shortlist with "noise" duplicates

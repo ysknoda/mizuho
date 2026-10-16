@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -96,6 +97,135 @@ def test_cli_mode_conflicting_with_spacegroup_is_rejected(tmp_path):
         capture_output=True, text=True, timeout=30)
     assert result.returncode != 0
     assert "auto_spacegroup" in result.stdout
+
+
+def test_cli_without_spacegroup_requires_opting_in(tmp_path):
+    """ADR-0021: the automatic space-group search has not reached its known
+    answers, so omitting "spacegroup" is an error unless the config opts in
+    with mode: auto_spacegroup."""
+    with open(FIXTURES_DIR / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    del config["spacegroup"]
+    config_path = tmp_path / "nacl_no_spacegroup.yaml"
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(config, fh)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "mizuho", "run", str(config_path)],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0
+    assert "mode: auto_spacegroup" in result.stdout
+    assert "adr/0021" in result.stdout
+
+
+def test_cli_auto_spacegroup_opt_in_warns(tmp_path):
+    """The opt-in passes the mode check and prints that the search is
+    experimental. Checked on _check_mode alone: a full automatic search
+    takes minutes."""
+    from mizuho.cli import AUTO_SPACEGROUP_WARNING, _check_mode
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _check_mode({"mode": "auto_spacegroup", "composition": "NaCl"})
+    assert AUTO_SPACEGROUP_WARNING in buf.getvalue()
+
+
+def test_exhaustive_strategy_runs_every_group_or_the_named_subset():
+    """ADR-0026: `spacegroup_search.strategy: exhaustive` runs every group in
+    mizuho's tables, or the subset `spacegroups` names."""
+    from mizuho.cli import _exhaustive_spacegroups
+    from mizuho.data import WYCKOFF_DB
+
+    from mizuho.symmetry import point_group_order
+
+    groups = _exhaustive_spacegroups({})
+    assert sorted(groups) == sorted(WYCKOFF_DB) and len(groups) == 230
+    # Highest point-group order first, so a partial run covers those first.
+    orders = [point_group_order(g) for g in groups]
+    assert orders == sorted(orders, reverse=True) and orders[0] == 48 and groups[-1] == 1
+    cfg = {"spacegroup_search": {"strategy": "exhaustive", "spacegroups": [99, 225, 99]}}
+    assert _exhaustive_spacegroups(cfg) == [225, 99]
+
+
+def test_exhaustive_record_round_trips(tmp_path):
+    """ADR-0026: each finished group is recorded, and a resumed run rebuilds
+    the same ranking entries from the record."""
+    import numpy as np
+    from mizuho.cli import _append_sg_record, _entries_from_record, _read_sg_record
+    from mizuho.pipeline import build_sg_config
+    from mizuho.structure import (
+        assignments_to_sites, build_structure, resolve_fixed_assignment,
+    )
+
+    with open(FIXTURES_DIR / "auto" / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    sg_config = build_sg_config(config, 225)
+    asgn = resolve_fixed_assignment(
+        225, [{"element": "Na", "letter": "a"}, {"element": "Cl", "letter": "b"}])
+    p = np.array([5.64])
+    cfg = dict(sg_config, wyckoff_sites=assignments_to_sites(asgn))
+    row = (0.0, 225, asgn, p, build_structure(p, cfg), sg_config)
+    path = tmp_path / "record.jsonl"
+    _append_sg_record(path, 225, [row], 1.0)
+    _append_sg_record(path, 99, [], 0.5)
+
+    done = _read_sg_record(path)
+    assert set(done) == {225, 99} and done[99] == []
+    assert done[225][0]["detected_sg"] == 225
+    rebuilt = _entries_from_record(225, done[225], sg_config)[0]
+    assert rebuilt[0] == 0.0 and rebuilt[1] == 225
+    np.testing.assert_allclose(rebuilt[3], p)
+    assert [a.entry.letter for a in rebuilt[2]] == ["a", "b"]
+
+
+def test_unknown_spacegroup_strategy_is_rejected(tmp_path):
+    with open(FIXTURES_DIR / "auto" / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    config["spacegroup_search"] = {"strategy": "everything"}
+    config_path = tmp_path / "nacl_bad_strategy.yaml"
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(config, fh)
+    result = subprocess.run(
+        [sys.executable, "-m", "mizuho", "run", str(config_path)],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0
+    assert "exhaustive" in result.stdout
+
+
+def test_ranking_prefers_the_higher_group_among_satisfied_entries():
+    """ADR-0026: at or below the threshold, symmetry first (Fm-3m 48 over
+    P4mm 8) even against a lower error; above it, error alone."""
+    from mizuho.cli import _ranking_key
+
+    entries = [(1e-12, 99), (0.0, 1), (5e-4, 225), (0.02, 225), (0.01, 99)]
+    order = sorted(entries, key=lambda e: _ranking_key(e[0], e[1], 1e-3))
+    assert order == [(5e-4, 225), (1e-12, 99), (0.0, 1), (0.01, 99), (0.02, 225)]
+
+
+@pytest.mark.slow
+def test_exhaustive_nacl_over_99_and_225_returns_fm3m(tmp_path):
+    """Restricted to P4mm and Fm-3m, the exhaustive strategy's answer is
+    detected as Fm-3m (225): measured 2026-10-14, error 0 in 225 against
+    0.036 at best in 99."""
+    from mizuho.io.cif import read_cif
+    from mizuho.symmetry import SUCCESS_TOLERANCE, detect_spacegroup
+
+    with open(FIXTURES_DIR / "auto" / "nacl.yaml") as fh:
+        config = yaml.safe_load(fh)
+    config["spacegroup_search"] = {"strategy": "exhaustive", "spacegroups": [99, 225]}
+    config_path = tmp_path / "nacl_exhaustive.yaml"
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(config, fh)
+    out = tmp_path / "nacl.cif"
+    result = subprocess.run(
+        [sys.executable, "-m", "mizuho", "run", str(config_path), "--format", "cif",
+         "--output", str(out), "--seed", "42"],
+        capture_output=True, text=True, timeout=3600)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
+    lat, frac, species = read_cif(out).expand()
+    assert detect_spacegroup(lat, frac, species, SUCCESS_TOLERANCE)[0] == 225
 
 
 # ---------------------------------------------------------------------------

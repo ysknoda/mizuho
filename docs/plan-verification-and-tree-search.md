@@ -4,7 +4,9 @@ Decisions behind this plan: [ADR-0009](adr/0009-always-normalise-penalties.md),
 [ADR-0010](adr/0010-success-is-the-detected-symmetry.md),
 [ADR-0011](adr/0011-equivalent-assignments-via-the-euclidean-normalizer.md),
 [ADR-0012](adr/0012-phase-1-is-seeded-and-ranked-over-several-seeds.md),
-[ADR-0013](adr/0013-cli-subcommands.md).
+[ADR-0013](adr/0013-cli-subcommands.md); since the design review of 2026-10-14,
+[ADR-0020](adr/0020-step-7-starts-with-measurements-before-ab-mcts.md) to
+[ADR-0025](adr/0025-adamite-reference-is-a-dft-relaxation-with-h.md).
 
 Runs alongside [plan-objective-uniqueness.md](plan-objective-uniqueness.md). Functional
 verification (can a structure be built correctly; does a search return a known answer) does not
@@ -147,6 +149,10 @@ anatase and forsterite join its fixtures.
 
 ### Step 7 — after the objective is unique
 
+Started 2026-10-14 at L2 (ADR-0020), in this order: term ablation, then the CONT primitive alone,
+then AB-MCTS only if CONT wins; Phase 1's feasibility-solve ladder in parallel. L1 waits for
+ADR-0021.
+
 - Accuracy benchmarks on the new minerals: the global-minimum gate and the 3% lattice target.
 - AB-MCTS, below.
 
@@ -193,8 +199,9 @@ B.2). The authors' own stated limitation is that the method assumes a reliable s
 
 ### Measurement and adoption
 
-Baseline: top 50 plus successive halving, which today restarts every round from scratch and
-discards its best point. Compared at equal total objective evaluations, five seeds, on the
+Baseline: a uniform budget over the top 50 with ADR-0019's early stopping. (This read "top 50
+plus successive halving" until 2026-10-14; mode A has no successive halving, which runs only in
+the space-group searches. ADR-0020.) Compared at equal total objective evaluations, five seeds, on the
 fixtures whose objective is unique by then. The measure is whether the published structure is
 reached. Adopted at L2 if it reaches it where the baseline does not, or reaches it with fewer
 evaluations; L1 is then built on L2.
@@ -268,3 +275,14 @@ more impostor and leaves seven. ADR-0005's two-round cap is reached:
 4. Bond (2%) and angle (5 deg rounding) slack compound: anatase's impostor sits at zero
    with every term satisfied.
 
+## Status (2026-10-14)
+
+Design review of 2026-10-14; decisions in ADR-0020 to ADR-0025.
+
+| item | state |
+|---|---|
+| step 7 | **started at L2** (ADR-0020). Precondition restated on ADR-0019's criterion: tier 1 wherever Stage 1 converges (nine of twelve at x4). Measurements queued: term ablation (i)-(iv) on diopside, topaz, adamite; then the CONT primitive; Phase 1 feasibility ladder x1/x2/x4 in parallel |
+| automatic space-group search | re-measured on current code (seed 42, detected at 1e-3 A): NaCl -> 99, CsCl -> 51, ZnO -> 26, TiO2 -> 26, Si -> 74 (integer CN 4). None reaches its known answer; all five recorded xfail. By ADR-0021's rule mode B is now explicit (`mode: auto_spacegroup`) |
+| adamite | reference replaced by AFLOW's PBE relaxation of ICSD 34868, H located; fixture re-measured, H modelled explicitly, charge term back on, objective 0 at the reference; impostor records retired (ADR-0025) |
+| Z reporting, `suggest` | decided (ADR-0022, ADR-0023), implemented after the step-7 measurements |
+| anion-centred gray band | closed, report-only (ADR-0024) |

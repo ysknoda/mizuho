@@ -221,12 +221,18 @@ def _adamite_like_config():
     }
 
 
-def test_coupling_injects_hh_exclusion_when_hydrogen_present():
+def test_coupling_leaves_hydrogen_out_of_the_anion_shell():
+    """ADR-0028: with H present, the auto anion constraints name the
+    framework cations, not X: H is not a polyhedral cation and its hydrogen
+    bonds lie where no cutoff separates them (ADR-0025)."""
     cfg = _adamite_like_config()
     new_cfg = augment_coupling_constraints(cfg)
     o_angle = next(a for a in new_cfg["angle_constraints"]
                    if a["atom_center"] == "O")
-    assert o_angle.get("exclude_neighbor_pairs") == [["H", "H"]]
+    o_coord = next(c for c in new_cfg["coordination_constraints"]
+                   if c["center_atom"] == "O" and "[auto]" in c.get("label", ""))
+    assert "H" not in o_angle["atom_neighbor"] and "H" not in o_coord["neighbor_atom"]
+    assert "exclude_neighbor_pairs" not in o_angle
 
 
 def test_coupling_no_hh_exclusion_when_hydrogen_absent():
@@ -239,10 +245,60 @@ def test_coupling_no_hh_exclusion_when_hydrogen_absent():
     assert "exclude_neighbor_pairs" not in o_angle
 
 
-def test_coupling_hh_exclusion_opt_out():
-    cfg = _adamite_like_config()
-    cfg["auto_coupling_exclude_hh"] = False
-    new_cfg = augment_coupling_constraints(cfg)
-    o_angle = next(a for a in new_cfg["angle_constraints"]
-                   if a["atom_center"] == "O")
-    assert "exclude_neighbor_pairs" not in o_angle
+# ---------------------------------------------------------------------------
+# T-X-T bridging angle (ADR-0027)
+# ---------------------------------------------------------------------------
+
+def _silicate(**extra):
+    cfg = {
+        "composition": "SiO2",
+        "ionic_charges": {"Si": 4, "O": -2},
+        "coordination_constraints": [
+            {"center_atom": "Si", "neighbor_atom": "O", "cn_min": 4, "cn_max": 4,
+             "cutoff_distance": 2.5}],
+    }
+    cfg.update(extra)
+    return cfg
+
+
+def test_tetrahedral_bridging_is_injected_from_cn_and_valence():
+    from mizuho.config import TETRAHEDRAL_BRIDGING_RANGE, augment_tetrahedral_bridging
+    out = augment_tetrahedral_bridging(_silicate())
+    (a,) = out["angle_constraints"]
+    assert (a["atom_center"], a["atom_neighbor"]) == ("O", ["Si"])
+    assert (a["angle_min"], a["angle_max"]) == TETRAHEDRAL_BRIDGING_RANGE
+    assert a["angle_cutoff"] == 2.5
+
+
+def test_tetrahedral_bridging_needs_cn_4_and_valence_4():
+    from mizuho.config import augment_tetrahedral_bridging
+    low_valence = {"composition": "ZnO", "ionic_charges": {"Zn": 2, "O": -2},
+                   "coordination_constraints": [
+                       {"center_atom": "Zn", "neighbor_atom": "O", "cn_min": 4,
+                        "cn_max": 4, "cutoff_distance": 2.6}]}
+    assert augment_tetrahedral_bridging(low_valence) is low_valence
+    octahedral = _silicate()
+    octahedral["coordination_constraints"][0].update(cn_min=6, cn_max=6)
+    assert augment_tetrahedral_bridging(octahedral) is octahedral
+
+
+def test_explicit_constraint_wins_and_opt_out_switches_off():
+    from mizuho.config import augment_tetrahedral_bridging
+    explicit = _silicate(angle_constraints=[
+        {"atom_center": "O", "atom_neighbor": "Si", "angle_min": 130.0, "angle_max": 170.0}])
+    assert augment_tetrahedral_bridging(explicit) is explicit
+    off = _silicate(auto_tetrahedral_bridging=False)
+    assert augment_tetrahedral_bridging(off) is off
+
+
+def test_tetrahedral_bridging_replaces_the_generic_auto_band():
+    """Quartz: every O neighbour is Si, so the generic auto X-O-X band covers
+    the same neighbour set; the cited T-X-T band replaces it."""
+    from mizuho.config import augment_coupling_constraints, augment_tetrahedral_bridging
+    cfg = augment_coupling_constraints(_silicate(angle_constraints=[
+        {"atom_center": "Si", "atom_neighbor": "O", "angle_min": 105.0, "angle_max": 115.0}],
+        auto_coupling_cutoff=2.5))
+    assert any(a.get("label") == "X-O-X [auto]" for a in cfg["angle_constraints"])
+    out = augment_tetrahedral_bridging(cfg)
+    o_centred = [a for a in out["angle_constraints"] if a["atom_center"] == "O"]
+    assert len(o_centred) == 1 and o_centred[0]["angle_min"] == 120.0

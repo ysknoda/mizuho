@@ -56,7 +56,8 @@ class Reference:
     @classmethod
     def from_cif(cls, fixture, cif, source, bonds, atom_counts):
         """A reference read from a CIF and expressed in mizuho's setting by
-        the reader (mizuho.io.cif), instead of transcribed by hand."""
+        the reader (mizuho.io.cif), instead of transcribed by hand. A file
+        declaring P1 (a database export) is read in its detected group."""
         m = cif_to_mizuho(f"{REFERENCE_DIR}/{cif}")
         entries = {e.letter: e for e in WYCKOFF_DB[m.spacegroup]}
         n_free = sum(len(entries[s["letter"]].free_params) for s in m.specs)
@@ -112,21 +113,17 @@ _REFS = {
         {"Si": (["O"], 4, 1.60, 1.66), "Al": (["O", "F"], 6, 1.78, 1.92)},
         {"Al": 8, "F": 8, "O": 16, "Si": 4}),
 
-    # Pnnm, from tests/fixtures/reference/adamite.cif (COD 1010925,
-    # Kokkoros 1937). Zn1 and O3 sit at z = 1/2; SG58's n-glide puts those
-    # in the SAME orbit as the z = 0 points, so letter 'g' covers both and
-    # no separate position is needed.
-    "adamite": Reference(
-        "adamite", 58,
-        [("As", "g", [0.244, 0.244]), ("Zn", "g", [0.139, 0.869]),
-         ("Zn", "f", [0.25]),
-         ("O", "g", [0.116, 0.105]), ("O", "g", [0.139, 0.403]),
-         ("O", "g", [0.361, 0.903]), ("O", "h", [0.236, 0.361, 0.25])],
-        [8.31, 8.51, 6.06],
-        "Zn2(AsO4)(OH) adamite; As-O CN 4, Zn1 CN 5 (trigonal bipyramidal), "
-        "Zn2 CN 6 (octahedral)",
-        {"As": (["O"], 4, 1.55, 1.85)},
-        {"As": 4, "Zn": 8, "O": 20}),
+    # Pnnm, from AFLOW's DFT-relaxed structure of ICSD 34868, written as P1
+    # (ADR-0025): the first adamite reference with its H located. It maps to
+    # As@g H@g O@g x3 O@h Zn@e Zn@g, the equivalence class (ADR-0011) of the
+    # former 1937 reference's Zn@f.
+    "adamite": Reference.from_cif(
+        "adamite", "adamite_aflow_icsd34868.cif",
+        "Zn2(AsO4)(OH) adamite, AFLOW PBE relaxation of ICSD 34868; As-O "
+        "1.719-1.728 A CN 4, Zn CN 5 (trigonal bipyramidal) and 6 "
+        "(octahedral), O-H 0.978 A",
+        {"As": (["O"], 4, 1.71, 1.73), "H": (["O"], 1, 0.97, 0.99)},
+        {"As": 4, "H": 4, "Zn": 8, "O": 20}),
 
     # Minerals added for the untested space groups and lattice types
     # (docs/plan-verification-and-tree-search.md). Read by the CIF reader;
@@ -245,21 +242,12 @@ def test_every_coordination_term_reports_the_cited_number(name):
     ("fluorite_caf2", 1e-3),
     ("sphalerite_zns", 1e-3),
     ("pyrite_fes2", 1e-3),
-    # Adamite's reference is a 1937 refinement whose As-O distances span
-    # 1.588-1.814 A, wider than the cited 1.60-1.75 A band, leaving ~0.03.
-    # Recorded rather than tuned away (ADR-0004).
-    ("adamite", 5e-2),
+    ("adamite", 1e-3),
 ])
 def test_objective_is_approximately_zero_at_the_reference_structure(name, ceiling):
     ref = _REFS[name]
     cfg, pv, asg = ref.build()
     base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
-    if name == "adamite":
-        # The CIF's hydrogen is undetermined (calc_flag 'dum'), so the cell
-        # is short 4 H and carries a net -4. That is a limitation of this
-        # reference, not of the objective, so the charge term is the one
-        # thing this structure cannot be used to test.
-        base["charge_balance_weight"] = 0.0
     full = dict(build_sg_config(base, ref.sg))
     full["wyckoff_sites"] = assignments_to_sites(asg)
 
@@ -302,8 +290,6 @@ def _impostor_case(path):
     ref = _REFS[record["reference"]]
     _, pv, asg = ref.build()
     base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
-    if record["reference"] == "adamite":
-        base["charge_balance_weight"] = 0.0     # undetermined H, as above
     full = dict(build_sg_config(base, ref.sg))
     full["wyckoff_sites"] = assignments_to_sites(asg)
     return full, np.array(record["param_vector"]), pv, record
@@ -334,3 +320,72 @@ def test_different_class_impostor_scores_above_the_published_structure(path):
 @pytest.mark.parametrize("stem", sorted(DFT_SAME_STRUCTURE))
 def test_dft_same_structure_impostor_is_in_the_published_class(stem):
     assert _SAME[stem], f"{stem}: DFT relaxes it to the published structure (ADR-0019)"
+
+
+# ---------------------------------------------------------------------------
+# ADR-0028: every reference regenerated from composition, charges, cited
+# coordination numbers and the density-derived volume alone. Pyrite is the
+# known exception: Brese & O'Keeffe's Fe-S R0 does not fit low-spin Fe(II)
+# (ADR-0016), so neither its band nor its bond-valence sum holds.
+# ---------------------------------------------------------------------------
+
+def _minimal_config(base):
+    q = base.get("ionic_charges") or {}
+    cns, bonded = {}, {}
+    for c in base.get("coordination_constraints", []):
+        if q.get(c["center_atom"], 0) > 0:
+            lo, hi = c["cn_min"], c["cn_max"]
+            cns[c["center_atom"]] = lo if lo == hi else [lo, hi]
+            # The anions a cation bonds, where the fixture names a subset
+            # (topaz Si: O only; ADR-0028 (a)).
+            nb = c["neighbor_atom"]
+            nb = [nb] if isinstance(nb, str) else list(nb)
+            anions = sorted(e for e, v in q.items() if v < 0)
+            if "X" not in nb and sorted(nb) != anions:
+                bonded[c["center_atom"]] = sorted(nb)
+    out = {k: base[k] for k in ("composition", "ionic_charges", "charge_tolerance_min",
+                                 "charge_tolerance_max", "lattice_bounds", "volume_constraint")
+           if k in base}
+    out["coordination_numbers"] = cns
+    if bonded:
+        out["bonded_anions"] = bonded
+    return out
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param(n, marks=pytest.mark.xfail(strict=True, reason="Fe-S R0 misfit (ADR-0016)"))
+    if n == "pyrite_fes2" else n
+    for n in sorted(_REFS)])
+def test_derived_config_scores_zero_at_the_reference(name):
+    ref = _REFS[name]
+    _, pv, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    full = dict(build_sg_config(_minimal_config(base), ref.sg))
+    full["wyckoff_sites"] = assignments_to_sites(asg)
+    total = error_breakdown(pv, full)["total"]
+    assert total < 1e-3, f"{name}: derived config scores {total:.6f} at its reference"
+
+
+def test_centring_pulls_a_strained_wurtzite_cell_back():
+    """ADR-0028 (c): the derived search's wurtzite end point (seed 42,
+    c +11.3 % on its bound, error 0) is centred inside the derived bond
+    bands back to within 3 % of the published cell, in the same class."""
+    from mizuho.constraints import ideal_bond_config
+    from mizuho.objective.energy import compute_error
+    from mizuho.optimize.driver import _centre
+    from mizuho.optimize.endpoints import topology_key
+    from mizuho.structure import build_bounds
+
+    ref = _REFS["wurtzite_zno"]
+    _, pv, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    cfg = dict(build_sg_config(_minimal_config(base), ref.sg))
+    cfg["wyckoff_sites"] = assignments_to_sites(asg)
+    end = np.array([3.078002928303033, 5.800000000001, 0.9712878993941999, 0.6361793383390436])
+    obj = lambda x: compute_error(x, cfg)  # noqa: E731
+    assert obj(end) < 1e-9
+    p, e = _centre(obj, cfg, ideal_bond_config(cfg), end, obj(end), build_bounds(cfg),
+                   1000, 1e-12, False)
+    assert e < 1e-4
+    assert topology_key(p, cfg) == topology_key(pv, cfg)
+    assert abs(p[0] / pv[0] - 1) < 0.03 and abs(p[1] / pv[1] - 1) < 0.03

@@ -39,3 +39,11 @@ problem.
   compatibility flag: the new behaviour becomes the default and affected tests are updated, because
   the current silent collapse is the defect and leaving it behind a flag would leave every default
   user with it.
+
+## Amended by ADR-0022
+
+The report is per topology class, not per Z: a class is the same net at any Z (its signature is
+gcd-normalised), so per-Z lists would repeat it. Each class carries the set of Z it was reached at,
+each Z searched reports how many classes first appeared there, and a class is represented by its
+smallest-Z entry among those that satisfy the constraints. The deferral ends with ADR-0020; the
+implementation follows its measurements.

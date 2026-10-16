@@ -547,7 +547,8 @@ def test_removed_normalize_penalties_key_is_rejected(entry):
 
 
 # ---------------------------------------------------------------------------
-# Integrality (ADR-0007, uniqueness plan phase D)
+# Soft coordination count and gray band (ADR-0015, ADR-0014); the
+# integrality penalty of ADR-0007 is removed (ADR-0020)
 # ---------------------------------------------------------------------------
 
 def _cn_config(center_charge, d, n=3, cn=(2, 3)):
@@ -570,7 +571,7 @@ def _smootherstep(t):
 def test_soft_count_is_exactly_integral_outside_the_gray_band():
     """ADR-0015: three neighbours at 1.69 A, just inside the band's inner
     edge (cutoff 2.0, width 0.1 -> band [1.7, 2.3]), count exactly 3; so
-    neither integrality nor the band term charges anything."""
+    the gray band charges nothing."""
     from mizuho.objective.energy import compute_error
     from mizuho.objective.penalties import _soft_coordination_number
     assert _soft_coordination_number(np.array([1.69, 1.69, 1.69, 2.31]), 2.0, 0.1) == 3.0
@@ -578,44 +579,22 @@ def test_soft_count_is_exactly_integral_outside_the_gray_band():
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-15)
 
 
-def test_integrality_penalises_a_half_integer_soft_count_inside_the_band():
+def test_a_half_integer_soft_count_inside_the_band_is_charged_by_the_gray_band():
     """Three neighbours at 1.90 A sit inside the gray band: each weighs
     smootherstep((2.3 - 1.90) / 0.6) = smootherstep(2/3) = 0.7901, soft
-    CN 2.3704, 0.3704 from an integer. Inside [1, 3] so the CN band term
-    is zero; integrality charges w*((0.3704 - 0.05)/2)^2 and the gray band
-    3 * w*((0.3 - 0.10)/2.0)^2, both in the parent's weight and scale."""
+    CN 2.3704. Inside [1, 3] so the CN band term is zero; the gray band
+    charges 3 * w*((0.3 - 0.10)/2.0)^2 in the parent's weight and scale.
+    Nothing else: the integrality penalty is removed (ADR-0020)."""
+    from mizuho.objective.breakdown import error_breakdown
     from mizuho.objective.energy import compute_error
     cfg, pv = _cn_config(+2, d=1.90, cn=(1, 3))
     cn = 3 * _smootherstep((2.3 - 1.90) / 0.6)
     assert cn == pytest.approx(2.3704, abs=1e-4)
-    dev = abs(cn - round(cn))
-    integrality = 1.5 * ((dev - 0.05) / 2.0) ** 2           # scale = midpoint(1, 3)
     gray = 3 * 1.5 * ((0.3 - 0.10) / 2.0) ** 2              # scale = cutoff
-    assert compute_error(pv, cfg) == pytest.approx(integrality + gray, rel=1e-9)
-
-
-def test_integrality_exempts_anion_centres():
-    from mizuho.objective.energy import compute_error
-    cfg, pv = _cn_config(-2, d=1.95, cn=(1, 3))
-    assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-12)
-
-
-def test_integrality_is_silent_within_the_dead_band():
-    from mizuho.objective.energy import compute_error
-    cfg, pv = _cn_config(+2, d=1.5, cn=(1, 3))        # soft CN 2.98, dev 0.02
-    assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-12)
-
-
-def test_breakdown_reports_the_integrality_share():
-    from mizuho.objective.breakdown import error_breakdown
-    from mizuho.objective.energy import compute_error
-    cfg, pv = _cn_config(+2, d=1.90, cn=(1, 3))
+    assert compute_error(pv, cfg) == pytest.approx(gray, rel=1e-9)
     entry = error_breakdown(pv, cfg)["cn"][0]
-    assert entry["integrality_penalty"] > 0
-    assert entry["integrality_penalty"] + entry["gray_band_penalty"] == pytest.approx(
-        compute_error(pv, cfg), rel=1e-9)
-    cn = 3 * _smootherstep((2.3 - 1.90) / 0.6)
-    assert entry["integrality_max_dev"] == pytest.approx(abs(cn - round(cn)), abs=1e-12)
+    assert entry["gray_band_penalty"] == pytest.approx(gray, rel=1e-9)
+    assert "integrality_penalty" not in entry
 
 
 def test_gray_band_matches_hand_calc_and_reports_anions_separately():

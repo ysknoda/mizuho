@@ -36,25 +36,16 @@ def _penalty(v, vmin, vmax, w=1.0, scale=1.0) -> float:
     return 0.0
 
 
-# ADR-0007: a cation-centred soft coordination number may stray at most
-# this far from an integer before the integrality penalty applies. Chosen
-# from data: worst reference 0.0179 (adamite Zn), mildest impostor 0.1865
-# (diopside Ca).
-INTEGRALITY_CEILING = 0.05
-
-
 def _integrality_applies(center: str, charges: Dict[str, float]) -> bool:
-    """Integrality binds cation-centred and covalent (uncharged) centres.
+    """Whether a centre's coordination number is held to an integer:
+    cation-centred and covalent (uncharged) centres. These get the gray-band
+    penalty and are judged by their integer count in the gates (ADR-0007).
     Anion-centred counts are exempt: the number of cations around an anion
     is not a discrete polyhedron (diopside's O deviates 0.127 at its own
-    published structure, ADR-0007)."""
+    published structure). The integrality penalty itself was removed by
+    ADR-0020: outside the gray band the soft count is integral (ADR-0015),
+    inside it the gray band already charges."""
     return charges.get(center, 0) >= 0
-
-
-def _integrality_penalty(cn: float, w: float, scale: float) -> float:
-    """Dead-band penalty on |CN - round(CN)|, in the parent coordination
-    constraint's weight and scale (so it adds no free parameter)."""
-    return _penalty(abs(cn - round(cn)), 0.0, INTEGRALITY_CEILING, w, scale=scale)
 
 
 # Half-width of the gray band around a coordination cutoff, in smoothing
@@ -89,6 +80,18 @@ def _midpoint_scale(vmin, vmax, eps: float = _SCALE_EPS) -> float:
     midpoint has no such failure mode and needs no per-term special
     casing."""
     return max((vmin + vmax) / 2.0, eps)
+
+
+# A coordination band's scale has a floor of half a neighbour: CN [0, 0]
+# (an anion a cation does not bond, ADR-0028 (a)) has midpoint 0, and the
+# relative deviation would otherwise divide by _SCALE_EPS. Every band with
+# cn_max >= 1 has a midpoint of at least 0.5 already, so it is unchanged.
+CN_SCALE_FLOOR = 0.5
+
+
+def _cn_scale(cn_min, cn_max) -> float:
+    """_midpoint_scale for a coordination band, floored at CN_SCALE_FLOOR."""
+    return max(_midpoint_scale(cn_min, cn_max), CN_SCALE_FLOOR)
 
 
 def _smootherstep_weight(distances: np.ndarray, cutoff: float, width: float) -> np.ndarray:

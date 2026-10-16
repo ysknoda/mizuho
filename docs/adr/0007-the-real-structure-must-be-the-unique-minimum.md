@@ -150,3 +150,9 @@ uniqueness. It does not.
 DFT relaxation of every recorded zero-error point ended at the published structure. Uniqueness
 is therefore required of the topology class reached, not of the point: points of the published
 class are the same structure for a DFT starting point.
+
+## Amended by ADR-0020
+
+The integrality penalty is removed. ADR-0015's compact support makes a cation's soft count
+integral outside the gray band, and the gray band (ADR-0014) charges inside it. The integer-CN
+verdict in the gates and reports stays.

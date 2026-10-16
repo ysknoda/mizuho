@@ -45,7 +45,7 @@ from ..lattice import _IMAGE_SHIFTS, ZERO_SHIFT_INDEX, get_lattice_system
 from ..structure import build_structure
 from .energy import compute_error
 from .penalties import (
-    GRAY_BAND_WIDTHS, INTEGRALITY_CEILING, _expand_wildcard, _integrality_applies, _midpoint_scale,
+    GRAY_BAND_WIDTHS, _cn_scale, _expand_wildcard, _integrality_applies, _midpoint_scale,
     reject_removed_keys,
 )
 
@@ -327,7 +327,7 @@ def make_gradient_fn(config, reference_param_vector):
             cutoff = cc["cutoff_distance"]
             w = cc.get("weight", 1.0)
             width = cc.get("smoothing_width", 0.10)
-            scale = _midpoint_scale(cnmin, cnmax)
+            scale = _cn_scale(cnmin, cnmax)
 
             ci_arr = sp_idx.get(ce, np.array([], dtype=int))
             if len(ci_arr) == 0:
@@ -373,11 +373,6 @@ def make_gradient_fn(config, reference_param_vector):
                 cn_i = jnp.sum(weights)
                 raw_cn = raw_cn + _penalty_jax(cn_i, cnmin, cnmax, w, scale)
                 if integral:
-                    # Mirrors penalties._integrality_penalty (ADR-0007).
-                    # round() is piecewise constant, so d/dcn |cn - round(cn)|
-                    # is +-1 away from half-integers, as in the numpy term.
-                    dev = jnp.abs(cn_i - jnp.round(cn_i))
-                    raw_cn = raw_cn + _penalty_jax(dev, 0.0, INTEGRALITY_CEILING, w, scale)
                     # Mirrors penalties._gray_band_penalty (identity image
                     # masked to zero, as for the soft count above).
                     half = GRAY_BAND_WIDTHS * width

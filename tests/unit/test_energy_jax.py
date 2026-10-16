@@ -72,9 +72,9 @@ def _nacl_config():
     lambda: _center_with_neighbors_config(),
     lambda: _center_with_neighbors_config(volume_bounds=(7000.0, 7900.0)),
     lambda: _nacl_config(),
-    # Neighbours 0.05 A inside the cutoff: soft CN 3 x 0.622 = 1.87, 0.13
-    # from an integer, so the integrality term (ADR-0007) is active and its
-    # JAX gradient is checked against finite differences here.
+    # Neighbours 0.05 A inside the cutoff: inside the gray band, with a
+    # fractional soft count, so the smootherstep count's JAX gradient is
+    # checked against finite differences here.
     lambda: _center_with_neighbors_config(d=1.95),
     # One neighbour shell 0.05 A past the cutoff: inside the gray band
     # (cutoff +- 0.3 A), so the gray-band term's gradient is checked too.

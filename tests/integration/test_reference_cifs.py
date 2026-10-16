@@ -34,6 +34,9 @@ REF = "tests/fixtures/reference"
 # file -> (space group, Wyckoff assignment in mizuho's setting)
 EXPECTED = {
     "adamite.cif": (58, Counter(["As@g", "Zn@g", "Zn@f", "O@g", "O@g", "O@g", "O@h"])),
+    # Declared P1 (an AFLOW export); read in its detected group, Pnnm.
+    "adamite_aflow_icsd34868.cif": (
+        58, Counter(["As@g", "H@g", "Zn@e", "Zn@g", "O@g", "O@g", "O@g", "O@h"])),
     "topaz.cif": (62, Counter(["O@c", "O@c", "Si@c", "Al@d", "F@d", "O@d"])),
     "wollastonite.cif": (2, Counter(["Ca@i"] * 3 + ["Si@i"] * 3 + ["O@i"] * 9)),
     "corundum_H.cif": (167, Counter(["Al@c", "O@e"])),
@@ -107,6 +110,14 @@ def test_rounded_special_positions_are_idealised():
     assert u % 1.0 == pytest.approx(0.3823, abs=1e-9)
 
 
+def test_a_file_declaring_p1_is_read_in_its_detected_group():
+    """AFLOW writes every structure as P1 with all atoms listed. P1 states
+    no symmetry, so the reader treats it as undeclared and detects."""
+    name = "adamite_aflow_icsd34868.cif"
+    assert read_cif(f"{REF}/{name}").spacegroup == 1
+    assert cif_to_mizuho(f"{REF}/{name}").spacegroup == 58
+
+
 def test_dummy_atoms_are_skipped():
     """adamite.cif's hydrogen is undetermined (calc_flag 'dum', -1,-1,-1)."""
     assert read_cif(f"{REF}/adamite.cif").skipped == ["H1"]
@@ -128,6 +139,10 @@ def test_dummy_atoms_are_skipped():
         # Origin choice 2 -> origin choice 1. The 1930s origin-1 refinement
         # differs by 1.1% in a and 0.05 A in Ti-O.
         ("anatase_origin2.cif", "anatase_origin1.cif", "Ti", 6, 0.015, 0.06),
+        # The 1937 refinement against a PBE relaxation (ADR-0025): cells
+        # within 0.6%, but the 1937 As-O spread is 1.588-1.814 A against
+        # 1.719-1.728 A.
+        ("adamite_aflow_icsd34868.cif", "adamite.cif", "As", 4, 0.01, 0.14),
     ],
 )
 def test_pair_agrees_within_refinement_difference(a, b, centre, cn, lat_tol, bond_tol):

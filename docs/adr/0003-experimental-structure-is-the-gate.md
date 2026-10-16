@@ -22,3 +22,9 @@ improving the search become meaningful.
   published bond lengths and coordination numbers before it is trusted. This is not optional
   caution: a first attempt at reconstructing spinel from memory produced an Mg–O distance of
   0.21 A, because the SG227 origin choice was wrong.
+
+## Amended by ADR-0025
+
+Adamite's reference is a DFT relaxation (AFLOW, PBE), the one exception to an experimental
+reference: mizuho's output is a DFT starting structure, and the 1937 refinement left H
+undetermined.

@@ -15,9 +15,9 @@ from ..structure import build_structure
 from .energy import compute_error
 from .bond_valence import bond_valence_term
 from .penalties import (
-    GRAY_BAND_WIDTHS, _gray_band_penalty, _integrality_applies, _integrality_penalty,
+    GRAY_BAND_WIDTHS, _gray_band_penalty, _integrality_applies,
     reject_removed_keys,
-    _estimate_volume, _expand_wildcard, _hard_radius, _midpoint_scale,
+    _estimate_volume, _expand_wildcard, _cn_scale, _hard_radius, _midpoint_scale,
     _penalty, _soft_coordination_number, _SCALE_EPS, _VOL_MARGIN_HI,
     _VOL_MARGIN_LO,
 )
@@ -294,7 +294,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         cnmin, cnmax = cc["cn_min"], cc["cn_max"]
         cutoff       = cc["cutoff_distance"]
         w            = cc.get("weight", 1.0)
-        scale        = _midpoint_scale(cnmin, cnmax)
+        scale        = _cn_scale(cnmin, cnmax)
         label        = cc.get("label", f"{ce}({neigh_spec})")
 
         ci_arr = sp_idx.get(ce, np.array([], dtype=int))
@@ -323,7 +323,6 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         cn_list = []   # hard integer count -- for human-readable display only
         soft_list = []
         cn_err  = 0.0
-        int_err = 0.0
         gray_added = 0.0      # in the objective: cation-centred only
         gray_all = 0.0        # report only: every centre, anions included
         integral = _integrality_applies(ce, charges)
@@ -342,7 +341,6 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             cn_err += _penalty(cn_soft, cnmin, cnmax, w, scale=scale)
             gb = _gray_band_penalty(row, cutoff, width, w)
             if integral:
-                int_err += _integrality_penalty(cn_soft, w, scale)
                 gray_added += gb
             gray_all += gb
 
@@ -358,11 +356,6 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             "cn_min_target":    cnmin,
             "cn_max_target":    cnmax,
             "n_norm":           norm_n,
-            # Integrality (ADR-0007) is part of this constraint's penalty;
-            # its share is reported separately for diagnosis.
-            "integrality_penalty": float(int_err) / norm_n,
-            "integrality_max_dev": (max(abs(x - round(x)) for x in soft_list)
-                                    if integral else None),
             # Gray band: the added share is part of `penalty`; the
             # all-centres value is REPORT ONLY, never summed into a total.
             "gray_band_penalty": float(gray_added) / norm_n,
@@ -370,7 +363,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             "gray_band_atoms": int(sum(
                 np.sum(np.abs(dm[li].ravel()[np.isfinite(dm[li].ravel())] - cutoff)
                        < GRAY_BAND_WIDTHS * width) for li in range(len(ci_arr)))),
-            "penalty":          float(cn_err + int_err + gray_added) / norm_n,
+            "penalty":          float(cn_err + gray_added) / norm_n,
         })
 
     # 5. Repulsion constraints (one-sided, lower-bound only)
@@ -640,9 +633,6 @@ def print_error_breakdown(bd: dict) -> None:
                       f"/N={c.get('n_norm',1)}")
             if c.get("gray_band_penalty", 0.0) > 0.0:
                 detail += f"  gray band {c['gray_band_penalty']:.4f}"
-            if c.get("integrality_penalty", 0.0) > 0.0:
-                detail += (f"  integrality {c['integrality_penalty']:.4f} "
-                           f"(dev {c['integrality_max_dev']:.3f})")
         _row("Coord. number", c["label"], c["penalty"], detail=detail)
 
     # Gray band, both versions (design review 2026-10-01): only the

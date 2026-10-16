@@ -43,3 +43,10 @@ identical to the run without bond valence, which Phase 1's local-shell scoring d
 
 Impostors remain in the objective's added terms (design review Q18 b): the work stops here and
 the next step is a decision, not a parameter. Recorded as `*_round3_bvs` impostor fixtures.
+
+## Amended by ADR-0020 and ADR-0025
+
+Stage 1 stopped converging on the large minerals in the run above, which added compact support and
+bond valence together. ADR-0020's term ablation separates the two, and demotes this term to
+report-only if removing it improves tier 1 while topaz's round-2 impostor stays rejected.
+Adamite's tolerances are re-measured on its new reference (ADR-0025): Zn 0.21, As 0.53.

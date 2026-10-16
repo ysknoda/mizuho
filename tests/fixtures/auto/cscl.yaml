@@ -1,4 +1,6 @@
 # CsCl, automatic space-group search. Expected detected group 221.
+# Opt-in required since ADR-0021.
+mode: auto_spacegroup
 composition: CsCl
 ionic_charges: {Cs: 1, Cl: -1}
 charge_tolerance_min: 0

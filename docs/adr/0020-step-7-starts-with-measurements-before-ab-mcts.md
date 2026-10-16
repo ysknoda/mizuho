@@ -1,0 +1,210 @@
+# Step 7 starts, with three measurements before AB-MCTS
+
+ADR-0014 held step 7 of `docs/plan-verification-and-tree-search.md` (accuracy benchmarks,
+AB-MCTS) until the objective was unique. ADR-0019 moved success to the bond-graph topology class,
+and on that criterion the precondition holds: wherever Stage 1 converged in the x4 gate, the point
+reached is in the published class (nine of twelve minerals). The three failures (diopside, adamite,
+topaz) are Stage 1 not converging. The ground for the hold is gone too: "strengthening the search
+made the prediction worse" was measured as lattice deviation, and diopside's x8 and x16 points,
+worse by that measure, relax to the published structure under DFT.
+
+Design review of 2026-10-14.
+
+## Decision
+
+- **Step 7 starts at L2 only** (Phase 2 budget within a fixed space group). L1, the space-group
+  search, waits for ADR-0021.
+- **The precondition becomes:** tier 1 on every mineral whose Stage 1 converges.
+- **Standing DFT spot-check.** The first time a mineral reaches a same-class, zero-error point
+  whose lattice is more than 3% from the published one, that point is relaxed with
+  `scripts/dft_basin/`. ADR-0019's evidence is thirteen oxide points relaxed in their own space
+  group; this keeps it from being generalised silently.
+- **Adoption measure for every step-7 comparison: tier 1**, reported beside Stage-1 convergence
+  (`error <= error(published) + 1e-3`), for the reason ADR-0005 keeps its two stages apart. Tier 2
+  is reported and not used for adoption: it measures the objective's slack, not the search. There
+  is no per-mineral allow-list of classes DFT found equivalent; diopside's x8 and x16 points count
+  as failures and are annotated as such. A false negative can only make adoption harder.
+
+## Order of measurement
+
+Each rule below is fixed before its measurement runs.
+
+1. **Term ablation.** x4, seed 42, published assignment fixed; diopside, topaz, adamite. Four
+   configurations: (i) compact support only (ADR-0015), (ii) + bond valence (ADR-0016),
+   (iii) + volume (ADR-0017; the current code), (iv) the current code without the integrality
+   penalty, (v) the current code without bond valence (added once (i)-(iii) showed volume alone
+   rejects the impostor, so bond valence's removal had to be measured with volume in). Measured: Stage-1 convergence, tier 1, and the score of topaz's round-2 impostor, the
+   one point DFT confirmed to be a different structure (ADR-0019).
+   - A term whose removal keeps that impostor above the published structure **and** improves
+     tier 1 is demoted to report-only. A term whose removal lets it through stays.
+   - "Above" means by more than ADR-0005's converged margin: `error(impostor) >
+     error(published) + 1e-3`. A strict `>` would count noise as rejection; without volume the
+     impostor scores 4.9e-11 (compact support only) and 7.5e-4 (+ bond valence) against a
+     published 0, both inside the margin within which the optimiser cannot tell two points apart.
+   - Integrality is removed when (iv) matches (iii) on Stage-1 convergence and tier 1 (the
+     condition ADR-0015 left pending).
+
+   Why first: Stage 1 stopped converging on the large minerals between ADR-0014 and ADR-0016, a
+   step that added compact support and bond valence together, against ADR-0005's one fix at a
+   time. ADR-0015's own x4 run was stopped before the large minerals finished. ADR-0016 read the
+   failure as the optimiser's by inference. If a term causes it, an optimiser measured against it
+   is being measured against our own landscape.
+
+2. **The CONT primitive alone**, on whichever of the three still fail Stage 1: independent restarts
+   (the current method) against resuming the best point with a reduced step size, with and without
+   the CMA-ES state carried over. Equal objective evaluations, five seeds, the published assignment
+   fixed. The three failures are single-candidate convergence, which only AB-MCTS's CONT arm could
+   address; whether it beats independent restarts has never been measured.
+   - CONT wins: AB-MCTS-A is built at L2.
+   - CONT does not win: AB-MCTS is dropped, and L2's problem becomes the per-candidate optimiser.
+
+3. **Phase 1's feasibility solve** (ADR-0012's remedy, chosen there before measuring). In parallel
+   with 1-2, since it measures the rank gate rather than the global-minimum gate. A budget ladder
+   x1 / x2 / x4 multiplies the restarts of every local-shell solve
+   (`scripts/phase1_ladder.py`) and finds the smallest budget at which the two AsO4 cases in
+   `tests/unit/test_geometry.py` are separated on every seed: the known-feasible shell scores below
+   the known-infeasible one in `solve_local_shell` (seeds 42-44), and ranks ahead of it in
+   `rank_by_feasibility_staged` (seeds 42-43). The order is the criterion, not the tests passing:
+   the first test also asserts absolute thresholds (feasible < 2.5, infeasible > 3.5) in the raw
+   units of before ADR-0009, which no budget can meet in normalised units, where the infeasible
+   shell scores about 0.06. At x1, `solve_local_shell` separates the two on seed 42 only, and the
+   staged ranking on both seeds. The five-seed rank spread of diopside and adamite is then measured
+   at that budget. Phase 1 taking 2-4x longer is accepted.
+   - The first test's thresholds are restated in normalised units from the ladder, by a rule fixed
+     here before its data: at the smallest separating budget the test takes that budget, its
+     feasible ceiling is the largest feasible score over seeds 42-44 and its infeasible floor the
+     smallest infeasible score, each rounded outward to two significant figures. If no budget up
+     to x4 separates them, both tests stay xfail with their reason restated in normalised units.
+   - Rejected: a Phase-1-only score (raw angles, a hard feasibility test). It would reintroduce the
+     two objectives ADR-0009 removed.
+   - Rejected as the remedy: drawing by free-parameter stratum. It lifts diopside, alone in its
+     stratum, but not adamite, 147th of 202 within its own.
+
+## Correction to the plan
+
+The plan gives AB-MCTS's baseline as "top 50 plus successive halving, which today restarts every
+round from scratch and discards its best point". Mode A has no successive halving:
+`pipeline.optimise_candidates` gives each of the top `max_candidates` the same budget, and ADR-0019's
+early stopping is its only adaptivity. Successive halving runs only in the space-group searches
+(`search/spacegroup_search.py`, `search/spacegroup_tree.py`). The L2 baseline is a uniform budget
+over the top 50 with early stopping.
+
+## Consequences
+
+- Adamite takes part in all three measurements: its 1937 reference, which would have kept it out
+  of the adoption decisions, is replaced by ADR-0025.
+- AB-MCTS's score transform is not settled here. The plan's `-log10(error + eps)` meets end points
+  that are exactly zero since ADR-0015; the transform is designed only if measurement 2 adopts
+  CONT.
+- ADR-0008's per-Z report (as ADR-0022 restates it) and `suggest` (ADR-0023) come after these
+  measurements; no gate depends on them.
+
+## Measured: the AsO4 order (2026-10-14)
+
+`scripts/phase1_ladder.py asO4`, restarts x1 / x2 / x4:
+
+| factor | `solve_local_shell`, feasible / infeasible (seeds 42, 43, 44) | staged rank, feasible / infeasible (seeds 42, 43) |
+| --- | --- | --- |
+| x1 | 0.054 / 0.076, 0.063 / 0.060, 0.066 / 0.061 | 1 / 4, 1 / 17 |
+| x2 | 0.054 / 0.076, 0.063 / 0.033, 0.063 / 0.061 | 1 / 17, 2 / 1 |
+| x4 | 0.054 / 0.033, 0.000 / 0.033, 0.000 / 0.033 | 1 / 17, 2 / 1 |
+
+No budget up to x4 orders the two shells on every seed, so by the rule above both tests stay
+xfail, with their reason restated in normalised units. The landscape does separate them: at x4 the
+infeasible shell sits at one floor, 0.0331, on every seed, and the feasible one reaches 0. The
+solver does not reach that 0 reliably: seed 42 stays at 0.0541 at every factor.
+
+## Measured: the term ablation (2026-10-14)
+
+`scripts/ablate_terms.py`, x4, seed 42, published assignment fixed. S1 = Stage 1 converged
+(error <= published + 1e-3; published scores 0 throughout), T1 = tier 1. Lattice deviation in %.
+
+| variant | diopside | topaz | adamite |
+| --- | --- | --- | --- |
+| (i) compact support only | 6.4e-9, S1, other class; a +5.7 b -5.6 beta +6.8, 3 bounds | 3.1e-3; +4.6 / -4.7 / +14.0, 3 bounds | 1.5e-2; +0.5 / -0.3 / +5.4 |
+| (ii) + bond valence | 0, S1, **T1**; a +5.7 c -4.6 beta -7.4, 2 bounds | 1.1e-3; -8.2 / -4.7 / -14.0, 2 bounds | 1.5e-2; -3.5 / +4.6 / -7.1, 1 bound |
+| (iii) + volume (current) | 2.5e-9, S1, other class; b -5.6, 1 bound | 2.1e-2; -13.6 / -4.7 / +14.0, 3 bounds | 1.5e-2; +1.1 / +6.0 / -7.1, 2 bounds |
+| (iv) (iii) without integrality | 0, S1, **T1**; c -5.8 beta -7.4, 1 bound | 4.2e-2; -13.6 / -4.7 / +14.0, 3 bounds | 1.4e-2; -1.4 / -5.8 / +7.9, 2 bounds |
+| (v) (iii) without bond valence | 8.5e-5, S1, other class; a +5.7 beta +6.8, 2 bounds | 1.7e-12, S1, other class; +2.7 / +5.4 / -7.3 | 1.5e-2; -0.7 / +1.0 / +2.8 |
+
+Topaz's round-2 impostor (published 0): (i) 4.9e-11, (ii) 7.5e-4, (iii) 6.8e-2, (iv) 6.8e-2,
+(v) 6.8e-2.
+
+Read against the rules:
+
+- **Volume stays.** Without it the impostor scores 7.5e-4, inside the 1e-3 margin.
+- **Bond valence stays.** Without it the impostor is still rejected (6.8e-2), but tier 1 does not
+  improve on any mineral.
+- **Integrality: the rule does not decide.** (iv) does not match (iii): it reaches the published
+  class on diopside where (iii) does not, and matches it on topaz and adamite. The rule removes
+  integrality on a match and says nothing of an improvement. Left to a decision.
+- **The terms do not cause the Stage-1 failures.** Adamite stops at one point in every variant,
+  (i) included: its whole residual, 0.014982 to twelve digits in (i), (ii), (iii) and (v), is one Zn
+  at CN 4 against the cited [5, 6], a discrete minimum the lattice moves around. Topaz fails Stage 1
+  in (i) to (iv), (i) included. Diopside converges in every variant, which contradicts ADR-0019's
+  8.3e-3 for (iii) at the same budget and seed; the likeliest cause is a different environment
+  (this run had no numba) diverging the CMA-ES trajectory, which would make one seed at x4 too
+  thin to decide tier 1 on.
+- **Topaz without bond valence (v) reaches a zero-error point of another class**, inside the bounds,
+  with every coordination number as cited. The current objective scores it 5.1e-4, all from Si's
+  bond-valence sum (3.74 against 4, tolerance 0.17): inside the margin. Whether it is another
+  structure needs the DFT spot-check of this ADR.
+- Measurement 2 (CONT) runs on adamite and topaz, the two that fail Stage 1 under (iii).
+
+## Decided after the ablation (2026-10-14)
+
+- **The integrality penalty is removed** (`objective/energy.py`, `breakdown.py`, `energy_jax.py`).
+  The ablation's rule did not decide it: (iv) improved diopside's tier 1 rather than matching
+  (iii), and changed nothing on topaz or adamite. Removed because no mineral got worse and,
+  since ADR-0015, the penalty can act only where the gray band already charges. Without
+  integrality, topaz's round-2 impostor still scores 6.8e-2. `_integrality_applies` stays: it
+  selects the centres the gray band and the gates' integer-CN verdict apply to.
+- **Every x4 judgment uses five seeds** (42-46), starting with measurement 2. One seed is too thin:
+  diopside's (iii) converged here and did not in ADR-0019 at the same seed and budget.
+
+## Measured: the rank spread at x1 and x4 (2026-10-14)
+
+`scripts/phase1_ladder.py rank`, seeds 42-46, rank of the published equivalence class:
+
+| mineral | classes | x1 ranks (worst) | x4 ranks (worst) | x4 time per seed |
+| --- | --- | --- | --- | --- |
+| diopside | 11,230 | 118, 92, 26, 138, 185 (185) | 120, 119, 19, 95, 144 (144) | 381-527 s |
+| adamite | 19,152 | 3074, 2891, 1576, 1230, 3129 (3129) | 1949, 2489, 1710, 1881, 1838 (2489) | 1044-1130 s |
+
+Four times the restarts narrows adamite's spread and moves neither mineral near the gate
+(`max_candidates` = 50); diopside's seed 43 gets worse. ADR-0012's remedy does not repair the
+rank: the feasibility solve is not short of restarts. The rank gate stays failing for diopside and
+xfail for adamite, and what the local-shell score cannot see is the next question.
+
+## Measured: the CONT primitive (2026-10-14)
+
+`scripts/measure_cont.py`, current code (integrality removed), published assignment fixed, seeds
+42-46, each strategy given the evaluations the independent x4 run used (336k-419k). Error after
+Stage 2; S1 = Stage 1 converged, T1 = tier 1; evaluations until first within the margin.
+
+| mineral, seed | independent (current) | CONT |
+| --- | --- | --- |
+| adamite 42 | 1.4e-2 | 0, S1, other class, 152k |
+| adamite 43 | 3.6e-13, S1, other class | 1.4e-2 |
+| adamite 44 | 3.1e-2 | 5.7e-5, S1, other class, 391k |
+| adamite 45 | 1.5e-2 | 6.1e-3 |
+| adamite 46 | 2.6e-14, S1, other class, 289k | 0, S1, other class, 45k |
+| topaz 42 | 4.2e-2 | 0, S1, other class, 264k |
+| topaz 43 | 2.2e-2 | 0, S1, other class, 89k |
+| topaz 44 | **0, S1, T1**, 158k | 0, S1, other class, 108k |
+| topaz 45 | 2.9e-3 | 0, S1, other class, 42k |
+| topaz 46 | 1.3e-14, S1, other class | 0, S1, other class, 339k |
+| **total** | S1 4 / 10, **T1 1 / 10** | S1 8 / 10, **T1 0 / 10** |
+
+- **By this ADR's measure CONT does not win**: tier 1 is 0 of 10 against 1 of 10. AB-MCTS is
+  not built.
+- CONT converges twice as often and usually sooner, and always into another class: resuming the
+  best x1 point deepens whichever basin the x1 restarts found best, and that basin is another
+  class's. Independent restarts are more diverse; the one tier-1 pass is theirs.
+- `cont_warm` equalled `cont_cold` on every seed: the best x1 restart had already met its own
+  stopping criteria, so carrying its state over added nothing.
+- **What blocks tier 1 on these two minerals is no longer reaching zero error but the zero-error
+  points of other classes**: 12 of the 13 converged end points are another class. Whether they
+  are other structures (topaz round 2 was; diopside's were not, ADR-0019) is the DFT spot-check's
+  question, and what separates them is the objective's.
+

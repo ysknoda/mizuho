@@ -33,112 +33,129 @@ lattice_bounds:
   b: [8.0, 9.0]
   c: [5.6, 6.5]
 
+# Reference structure: tests/fixtures/reference/adamite_aflow_icsd34868.cif,
+# AFLOW's DFT-relaxed structure of ICSD 34868, the first adamite reference
+# with its hydrogen located (ADR-0025). It replaces the 1937 refinement
+# (COD 1010925), whose undetermined H had switched the charge term off and
+# whose As-O spread (1.588-1.814 A) had widened every band below. Cutoffs
+# are the midpoint of the first/second shell gap (ADR-0004); bond bands are
+# the reference span widened by 2% and rounded outward (ADR-0007).
+
 bond_constraints:
   - atom1: As
     atom2: O
-    # Band: reference span 1.588-1.814 A widened by 2% (ADR-0007; phase E).
-    distance_min: 1.55
-    distance_max: 1.86
-    # Measured at tests/fixtures/reference/adamite.cif (ADR-0004):
-    # As-O first shell ends 1.814 A, second starts 3.004 A.
-    cutoff: 2.409
+    # Reference span 1.719-1.728 A.
+    distance_min: 1.68
+    distance_max: 1.77
+    # As-O first shell ends 1.728 A, second starts 3.142 A.
+    cutoff: 2.435
   - atom1: Zn
     atom2: O
-    # Band: reference span 1.875-2.290 A widened by 2% (ADR-0007; phase E).
-    distance_min: 1.83
-    distance_max: 2.34
-    # Measured at tests/fixtures/reference/adamite.cif (ADR-0004):
-    # Zn-O first shell ends 2.29 A, second starts 3.272 A.
-    cutoff: 2.781
+    # Reference span 1.984-2.238 A.
+    distance_min: 1.94
+    distance_max: 2.29
+    # Zn-O first shell ends 2.238 A, second starts 3.420 A.
+    cutoff: 2.829
+  - atom1: H
+    atom2: O
+    # Reference O-H 0.978 A (all four H).
+    distance_min: 0.95
+    distance_max: 1.00
+    # The next O is the hydrogen-bond acceptor at 2.323 A.
+    cutoff: 1.650
 
 angle_constraints:
   - atom_center: As
     atom_neighbor: O
+    # Cited band; the reference realises 105.8-112.5 deg.
     angle_min: 100.0
     angle_max: 120.0
-    # Stated rather than left at 1.5 x distance_max: once phase E widened
-    # the bond bands, that implicit cutoff would move with them.
-    angle_cutoff: 2.409
+    angle_cutoff: 2.435
     weight: 1.0
   - atom_center: Zn
-    # Measured at the reference structure (ADR-0004): the realised
-    # O-Zn-O range is 78.6-125.9 deg. Zn1 is a trigonal bipyramid, whose
-    # equatorial angles legitimately exceed the former 120 deg ceiling.
     atom_neighbor: O
+    # Zn1 is a trigonal bipyramid, whose equatorial angles legitimately
+    # exceed 120 deg. The reference realises 75.1-124.6 deg.
     angle_min: 75.0
     angle_max: 130.0
-    # The measured shell cutoff (ADR-0004). Left implicit, 1.5 x the
-    # phase-E distance_max (2.34) = 3.51 A reached into the second shell
-    # (from 3.272 A) and scored 49 deg O-Zn-O angles at the reference.
-    angle_cutoff: 2.781
+    angle_cutoff: 2.829
+    weight: 1.0
+  - atom_center: O
+    # Cation-anion-cation bridging, stated explicitly with [Zn, As] rather
+    # than X: X would include H, and the hydrogen bond O...H (2.323 A) lies
+    # only 0.085 A beyond the longest Zn-O bond (2.238 A), so no cutoff can
+    # separate a shell that includes H (ADR-0025).
+    atom_neighbor: [Zn, As]
+    angle_min: 80.0
+    angle_max: 160.0
+    angle_cutoff: 2.690
     weight: 1.0
 
 coordination_constraints:
-  # Stated explicitly rather than left to augment_coupling_constraints:
-  # that helper derives its cutoff from max(bond distance_max) = 2.15 A,
-  # only 0.14 A past the longest real Zn-O bond, so the logistic soft
-  # count never saturates. Measured here instead (ADR-0004): the
-  # O-cation first shell ends 2.290 A, the second starts 3.004 A.
+  # O-cation shell over [Zn, As], for the reason stated on the O-centred
+  # angle above. First shell ends 2.238 A, second starts 3.142 A.
   - center_atom: O
-    neighbor_atom: X
+    neighbor_atom: [Zn, As]
     cn_min: 2
     cn_max: 4
-    cutoff_distance: 2.647
+    cutoff_distance: 2.690
     weight: 1.0
-
   - center_atom: As
     neighbor_atom: O
     cn_min: 4
     cn_max: 4
-    # Measured at the reference structure (ADR-0004).
-    cutoff_distance: 2.409
+    cutoff_distance: 2.435
     weight: 1.5
   - center_atom: Zn
     neighbor_atom: O
     cn_min: 5
     cn_max: 6
-    # Measured at the reference structure (ADR-0004).
-    cutoff_distance: 2.781
+    cutoff_distance: 2.829
     weight: 1.5
-  # Polymerisation (phase C): isolated AsO4 plus hydroxyl, {0: 4, 1: 16}.
+  # A hydroxyl H bonds one O.
+  - center_atom: H
+    neighbor_atom: O
+    cn_min: 1
+    cn_max: 1
+    cutoff_distance: 1.650
+    weight: 1.5
+  # Polymerisation (uniqueness plan phase C): isolated AsO4 plus hydroxyl,
+  # {0: 4, 1: 16}.
   - center_atom: O
     neighbor_atom: As
     cn_min: 0
     cn_max: 1
-    cutoff_distance: 2.409
+    cutoff_distance: 2.435
+    weight: 1.0
+  # One H per hydroxyl O and none on the arsenate O, {0: 16, 1: 4}: a
+  # second H on one O would model a water molecule, not (OH).
+  - center_atom: O
+    neighbor_atom: H
+    cn_min: 0
+    cn_max: 1
+    cutoff_distance: 1.650
     weight: 1.0
 
-# Cutoff for the auto X-O-X angle constraint phase B now injects beside
-# the explicit O(X) coordination constraint (ADR-0004, measured above).
-auto_coupling_cutoff: 2.647
+# The constraints above state every anion-centred shell explicitly over
+# [Zn, As]; augment_coupling_constraints would otherwise add an O(X) pair
+# whose X includes H (ADR-0025).
+auto_anion_coupling: false
 
-# auto_coupling_exclude_hh (default true) makes augment_coupling_
-# constraints add exclude_neighbor_pairs: [[H, H]] to the auto O-centred
-# angle constraint, since H is present (see config.py).
-
-# All fields auto-computed from composition via the Hazen-type additive
-# volume rule (V_est=448.6 A^3 here, band [358.8,650.4] -- brackets the
-# real adamite cell, ~427-434 A^3). Keeps the lattice from drifting to
-# an unphysical size regardless of how wide lattice_bounds is; verified
-# empirically to fix a runaway to V~5300 A^3 under lattice_bounds
-# widened to [1,30] on every axis (2.6x lower error, no more edge-
-# pinning). Impact on this fixture's own (already tight) lattice_bounds
-# verified separately -- see the mizuho-py-wychoff-position plan's
-# phase I-3.
-# Cell volume from the measured density, D(meas.) = 4.32–4.48 g/cm^3 (Handbook of
+# Cell volume from the measured density, D(meas.) = 4.32-4.48 g/cm^3 (Handbook of
 # Mineralogy, Anthony et al., eds., Mineralogical Society of America;
 # references/adamite.pdf): V = Z M / (rho N_A) with Z = 4, M(Zn2AsO5H) from IUPAC 2021
 # atomic weights (scripts/density_to_volume.py). D(calc.) is not used.
 volume_constraint:
   volume_min: 425.04
   volume_max: 440.79
-# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; design review
-# 2026-10-01). The cited 0.1 v.u. tolerance is exceeded at this fixture's own
-# reference, so it is replaced by the measured deviation rounded outward
-# (ADR-0004's amendment): Zn 0.593.
-# Zn's 0.593 is the 1937 refinement's own spread (see the Zn-O band).
+# Bond-valence sums (Brese & O'Keeffe 1991 R0, b = 0.37 A; ADR-0016). The
+# cited 0.1 v.u. tolerance is exceeded at this fixture's own reference, so
+# it is replaced by the measured deviation rounded outward (ADR-0004's
+# amendment): As 4.474 against 5 (PBE lengthens As-O by about 0.03 A, the
+# functional's error ADR-0025 accepts), Zn 2.087-2.209 against 2. H scores
+# 0.927 and keeps the cited 0.1.
 bond_valence:
-  tolerance: {Zn: 0.6}
+  tolerance: {As: 0.53, Zn: 0.21}
 
 tree_search:
   max_sites: 9

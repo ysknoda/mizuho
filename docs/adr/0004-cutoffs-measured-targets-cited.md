@@ -74,3 +74,8 @@ error decides the verdict. A percentage margin was rejected here as an unjustifi
 comfortably inside it. ADR-0007 adds the missing rule — a bond band is the reference span widened
 by 2% of the bond length — and explains why: topaz's bands were 15-33x wider than the chemistry
 they describe, and an impostor used exactly that slack.
+
+## Amended by ADR-0025
+
+The adamite residuals above belong to the 1937 reference, which ADR-0025 replaces with a DFT
+relaxation that locates H. At the new reference every term, the charge term included, is zero.

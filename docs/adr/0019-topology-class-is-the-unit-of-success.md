@@ -95,3 +95,9 @@ in 32-34 min each.
 - The open problem moves from the objective to the class criterion: a merge rule that also joins
   diopside's impostors to the published class without joining topaz's would need information
   beyond the bond graph.
+
+## Followed by ADR-0020
+
+Tier 1 is the adoption measure of every step-7 comparison, with Stage-1 convergence beside it, and
+a new mineral's first same-class zero-error point more than 3% off the published lattice is
+relaxed by DFT before the class criterion is trusted for it.

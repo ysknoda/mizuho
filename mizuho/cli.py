@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from .objective.breakdown import error_breakdown, print_error_breakdown
 from .objective.energy import compute_error
 from .lattice import CRYSTAL_SYSTEM_OF_SG, get_lattice_system
 from .optimize.driver import optimize_one_assignment
+from .optimize.endpoints import grouping_settings
 from .pipeline import (
     _run_auto_composition_mode, _run_composition_pool, build_sg_config,
     merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
@@ -31,7 +33,7 @@ from .normalizer import (
 )
 from .objective.penalties import reject_removed_keys
 from .structure import assignments_to_sites, build_structure, resolve_fixed_assignment
-from .symmetry import SUCCESS_TOLERANCE, hall_number_of_sg
+from .symmetry import SUCCESS_TOLERANCE, hall_number_of_sg, point_group_order
 
 
 def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
@@ -60,6 +62,138 @@ def _check_fixed_assignment_matches_composition(asgn, comp_str: str) -> None:
               f"(per-element ratios: {ratios})."); sys.exit(1)
 
 
+SG_STRATEGIES = ("hierarchical", "flat", "exhaustive")
+
+
+def _sg_strategy(config: dict) -> str:
+    strategy = (config.get("spacegroup_search") or {}).get("strategy", "hierarchical")
+    if strategy not in SG_STRATEGIES:
+        print(f"ERROR: spacegroup_search.strategy must be one of {list(SG_STRATEGIES)}, "
+              f"got {strategy!r}."); sys.exit(1)
+    return strategy
+
+
+def _exhaustive_spacegroups(config: dict) -> list:
+    """The groups the exhaustive strategy runs: every group in mizuho's
+    tables, or `spacegroup_search.spacegroups` when the config names a
+    subset (a partial or resumed run)."""
+    named = (config.get("spacegroup_search") or {}).get("spacegroups")
+    if named is None:
+        groups = set(WYCKOFF_DB)
+    else:
+        bad = [g for g in named if g not in WYCKOFF_DB]
+        if bad:
+            print(f"ERROR: spacegroup_search.spacegroups names unknown groups {bad}."); sys.exit(1)
+        groups = set(int(g) for g in named)
+    # Highest point-group order first (ADR-0026): the groups the answer is
+    # most likely to be found in finish first, so a partial run says most.
+    return sorted(groups, key=lambda g: (-point_group_order(g), -g))
+
+
+def _read_sg_record(path) -> dict:
+    """{space group: [entry, ...]} from an exhaustive run's record, one JSON
+    line per finished group (ADR-0026); empty when there is none yet."""
+    import json
+
+    done = {}
+    if path and Path(path).exists():
+        for line in Path(path).read_text().splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                done[int(rec["sg"])] = rec["entries"]
+    return done
+
+
+def _append_sg_record(path, sg: int, rows: list, seconds: float) -> None:
+    """Record one finished group: every Phase 2 entry with its assignment,
+    error, parameters, topology class and detected group at the success
+    tolerance. This is the ground-truth table of ADR-0026 and lets a run
+    resume after an interruption."""
+    import json
+
+    from .optimize.endpoints import topology_key
+    from .symmetry import detect_spacegroup
+
+    entries = []
+    for err, _, asgn, best_p, structure, sg_config in rows:
+        key = det = None
+        if best_p is not None:
+            cfg = dict(sg_config, wyckoff_sites=assignments_to_sites(asgn))
+            key = topology_key(best_p, cfg)
+            found = detect_spacegroup(structure["lattice_matrix"], structure["frac_coords"],
+                                      structure["species"], SUCCESS_TOLERANCE)
+            det = None if found is None else int(found[0])
+        entries.append({
+            "specs": [{"element": a.element, "letter": a.entry.letter} for a in asgn],
+            "error": None if best_p is None else float(err),
+            "params": None if best_p is None else [float(x) for x in best_p],
+            "topology": None if key is None else repr(key),
+            "detected_sg": det,
+        })
+    with open(path, "a") as fh:
+        fh.write(json.dumps({"sg": sg, "seconds": round(seconds, 1), "entries": entries}) + "\n")
+
+
+def _entries_from_record(sg: int, entries: list, sg_config: dict) -> list:
+    """`run` ranking entries rebuilt from a recorded group."""
+    import numpy as np
+
+    rows = []
+    for e in entries:
+        asgn = resolve_fixed_assignment(sg, e["specs"])
+        if e["params"] is None:
+            rows.append((1e10, sg, asgn, None, None, sg_config))
+            continue
+        p = np.array(e["params"])
+        cfg = dict(sg_config, wyckoff_sites=assignments_to_sites(asgn))
+        rows.append((e["error"], sg, asgn, p, build_structure(p, cfg), sg_config))
+    return rows
+
+
+def _ranking_key(error: float, sg: int, threshold: float) -> tuple:
+    """Global ranking order (ADR-0026): entries at or below the converged
+    threshold first, highest point-group order among them first, then error;
+    every other entry by error alone."""
+    if error <= threshold:
+        return (0, -point_group_order(sg), error)
+    return (1, 0, error)
+
+
+AUTO_SPACEGROUP_WARNING = (
+    "  WARNING: the automatic space-group search is experimental. Its "
+    "known-answer tests\n  (NaCl -> 225 among them) do not pass; check the "
+    "detected space group of\n  every result (docs/adr/0021, 0026).")
+
+
+def _check_mode(config: dict) -> None:
+    """Whether a config may run, and in which space-group mode.
+
+    "mode" must agree with whether "spacegroup" is present, so a config
+    can't silently ask for one mode while supplying inputs for the other.
+    The automatic space-group search is opt-in: it has not reached its
+    known answers, so a config that simply omits "spacegroup" is rejected
+    rather than handed a plausible structure in the wrong group
+    (docs/adr/0021). Applies to every composition mode, all of which search
+    space groups when none is given."""
+    sg_given = config.get("spacegroup")
+    mode = config.get("mode")
+    if mode is not None and mode not in ("single_spacegroup", "auto_spacegroup"):
+        print(f"ERROR: mode must be 'single_spacegroup' or 'auto_spacegroup', "
+              f"got {mode!r}."); sys.exit(1)
+    if mode == "single_spacegroup" and sg_given is None:
+        print("ERROR: mode: single_spacegroup requires 'spacegroup' to be set."); sys.exit(1)
+    if mode == "auto_spacegroup" and sg_given is not None:
+        print("ERROR: mode: auto_spacegroup requires 'spacegroup' to be "
+              "omitted (it selects one automatically)."); sys.exit(1)
+    if sg_given is None and mode != "auto_spacegroup":
+        print("ERROR: no 'spacegroup' given. The automatic space-group search "
+              "does not yet reach its known answers (docs/adr/0021); set "
+              "'spacegroup', or opt in with 'mode: auto_spacegroup'."); sys.exit(1)
+    if sg_given is None:
+        _sg_strategy(config)
+        print(AUTO_SPACEGROUP_WARNING)
+
+
 def _cmd_run(args) -> None:
     """`mizuho run`: predict structures (docs/adr/0013-cli-subcommands.md)."""
     # ----------------------------------------------------------------
@@ -86,6 +220,8 @@ def _cmd_run(args) -> None:
     #   2. "composition_pool": [...]  -> user-supplied pool (legacy)
     #   3. "composition": "..."       -> single composition (original)
     # ================================================================
+    _check_mode(config)
+
     auto_comp = config.get("auto_composition", False)
     pool      = config.get("composition_pool")
 
@@ -112,15 +248,6 @@ def _cmd_run(args) -> None:
     # is present, so a config can't silently ask for one mode while
     # supplying inputs for the other.
     sg_given  = config.get("spacegroup")   # None or int
-    mode      = config.get("mode")
-    if mode is not None and mode not in ("single_spacegroup", "auto_spacegroup"):
-        print(f"ERROR: mode must be 'single_spacegroup' or 'auto_spacegroup', "
-              f"got {mode!r}."); sys.exit(1)
-    if mode == "single_spacegroup" and sg_given is None:
-        print("ERROR: mode: single_spacegroup requires 'spacegroup' to be set."); sys.exit(1)
-    if mode == "auto_spacegroup" and sg_given is not None:
-        print("ERROR: mode: auto_spacegroup requires 'spacegroup' to be "
-              "omitted (it selects one automatically)."); sys.exit(1)
     auto_mode = (sg_given is None)
 
     # `wyckoff_assignment` (optional): a user-supplied, already-known
@@ -147,7 +274,7 @@ def _cmd_run(args) -> None:
     print(f"  Crystal Structure Predictor v6")
     print(f"  Composition  : {config['composition']}")
     if auto_mode:
-        print(f"  Space group  : AUTO (Phase 0 screening active)")
+        print(f"  Space group  : AUTO, experimental (Phase 0 screening active)")
     else:
         sg = int(sg_given)
         if sg not in WYCKOFF_DB:
@@ -174,7 +301,14 @@ def _cmd_run(args) -> None:
     # ================================================================
     # Phase 0: automatic space-group screening (auto mode only)
     # ================================================================
-    if auto_mode:
+    if auto_mode and _sg_strategy(config) == "exhaustive":
+        # Every space group, each through mode A's pipeline (ADR-0026): no
+        # Phase 0 to miss the right one. A group no assignment of the
+        # composition fits is skipped by Phase 1 in milliseconds.
+        top_sgs = _exhaustive_spacegroups(config)
+        print(f"\n[Phase 0] Exhaustive: {len(top_sgs)} space group(s), each "
+              f"searched as in mode A.")
+    elif auto_mode:
         print("\n[Phase 0] Automatic space-group search ...")
         sg_search_cfg = config.get("spacegroup_search", {})
         top_k         = sg_search_cfg.get("top_sg_count", 5)
@@ -194,6 +328,13 @@ def _cmd_run(args) -> None:
     # Phase 1 + 2: full tree search and optimisation for each SG
     # ================================================================
     all_results = []   # (error, sg, asgn, best_p, structure)
+    # An exhaustive run records each finished group and resumes from the
+    # record (ADR-0026).
+    record = ((config.get("spacegroup_search") or {}).get("record")
+              if auto_mode and _sg_strategy(config) == "exhaustive" else None)
+    recorded = _read_sg_record(record)
+    if recorded:
+        print(f"\n  Resuming from {record}: {len(recorded)} group(s) already recorded.")
 
     for sg_idx, sg in enumerate(top_sgs):
         # Build a per-SG config
@@ -204,6 +345,13 @@ def _cmd_run(args) -> None:
             print(f"  [SG {sg_idx+1}/{len(top_sgs)}] SG {sg} "
                   f"({CRYSTAL_SYSTEM_OF_SG.get(sg,'?')}) - full search")
             print(f"{'-'*65}")
+
+        if sg in recorded:
+            all_results.extend(_entries_from_record(sg, recorded[sg], sg_config))
+            print(f"  Recorded: {len(recorded[sg])} entry(ies), not re-run.")
+            continue
+        sg_started = time.time()
+        n_before = len(all_results)
 
         if fixed_wy is not None:
             print(f"\n[Phase 1] SG {sg} - using fixed wyckoff_assignment "
@@ -232,6 +380,8 @@ def _cmd_run(args) -> None:
 
             if not valid_asgns:
                 print(f"  Skipping SG {sg} (no valid assignments).")
+                if record:
+                    _append_sg_record(record, sg, [], time.time() - sg_started)
                 continue
 
         # Phase 2: optimise each Wyckoff assignment; one entry per
@@ -243,6 +393,8 @@ def _cmd_run(args) -> None:
                 all_results.append((1e10, sg, asgn, None, None, sg_config))
             else:
                 all_results.append((r.error, sg, asgn, r.params, r.structure, sg_config))
+        if record:
+            _append_sg_record(record, sg, all_results[n_before:], time.time() - sg_started)
 
     if not all_results:
         print("\nNo valid structures found across all space groups."); sys.exit(0)
@@ -267,7 +419,11 @@ def _cmd_run(args) -> None:
     # ----------------------------------------------------------------
     # Global ranking
     # ----------------------------------------------------------------
-    all_results.sort(key=lambda x: x[0])
+    # Entries that satisfy the constraints rank by symmetry first (ADR-0026):
+    # a structure and its distortions in subgroups all reach zero error,
+    # and the highest group among them is the one ADR-0010 calls the answer.
+    threshold = grouping_settings(opt_cfg).zero_error_threshold
+    all_results.sort(key=lambda x: _ranking_key(x[0], x[1], threshold))
     # One row per bond-graph topology class: entries that reached the same
     # class are one structure (ADR-0019); "Same" counts the merged ones.
     ranked = merge_same_topology(all_results, lambda e: e[3], _run_entry_config)

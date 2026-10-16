@@ -78,6 +78,9 @@ angle_constraints:
     angle_max: 120.0
     weight: 1.5
 
+# The Si-O-Si bridging band [120, 180] is injected from Si's cited CN 4 and
+# valence 4 (ADR-0027, config.augment_tetrahedral_bridging).
+
 coordination_constraints:
   - center_atom: Si
     neighbor_atom: O

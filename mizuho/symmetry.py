@@ -86,6 +86,14 @@ def _spglib_cell(lattice: np.ndarray, frac: np.ndarray, species: Sequence[str]):
     return (np.asarray(lattice, float), np.asarray(frac, float) % 1.0, types), kinds
 
 
+def point_group_order(sg: int) -> int:
+    """Number of distinct rotations in `sg`: its point group's order, the
+    measure of symmetry the global ranking prefers among constraint-
+    satisfying entries (ADR-0026). Fm-3m 48, P4mm 8, P1 1."""
+    rot, _ = get_ops(sg)
+    return len({tuple(np.rint(r).astype(int).ravel()) for r in rot})
+
+
 def detect_spacegroup(
     lattice, frac, species, symprec: float
 ) -> tuple[int, str] | None:

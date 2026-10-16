@@ -315,13 +315,15 @@ def cif_to_mizuho(path, symprec: float | None = None):
     """Read a CIF and express it in mizuho's setting of its declared
     space group (mizuho.symmetry.to_mizuho). The group is taken from the
     CIF's IT-number tag, or detected from its expanded structure when the
-    file declares none."""
+    file declares none. A file declaring P1 is treated as declaring none:
+    database exports (AFLOW) write every structure as P1 with all atoms
+    listed, and P1 states no symmetry to respect."""
     from ..symmetry import detect_spacegroup, to_mizuho
 
     cif = read_cif(path)
     lat, frac, species = cif.expand()
     sg = cif.spacegroup
-    if sg is None:
+    if sg is None or sg == 1:
         sg = detect_spacegroup(lat, frac, species, 1e-3)[0]
     try:
         return to_mizuho(lat, frac, species, sg, symprec=symprec)

@@ -1,5 +1,7 @@
 # Si, automatic space-group search. Expected detected group 227 or its
 # polytype 194 (hexagonal diamond): first-shell constraints cannot tell them apart.
+# Opt-in required since ADR-0021.
+mode: auto_spacegroup
 composition: Si
 ionic_charges: {Si: 0}
 bond_constraints:

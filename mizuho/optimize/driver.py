@@ -10,6 +10,7 @@ from typing import List, Optional
 import numpy as np
 from scipy.optimize import minimize
 
+from ..constraints import ideal_bond_config
 from ..objective.energy import compute_error
 from ..structure import assignments_to_sites, build_bounds, build_structure
 from .basin_hopping import multistart_basin_hopping
@@ -39,6 +40,12 @@ logger = logging.getLogger(__name__)
 # optimisation is the literal/canonical meaning of the term -- TPE is
 # also technically a Bayesian-optimisation method but is exposed under
 # its own more specific name "tpe" to keep the two distinguishable).
+# Centring (ADR-0028 (c)): the ideal-bond term's weight is a tie-break
+# inside the zero-error region, and the error may rise by at most the
+# tolerance (an order below Stage 1's 1e-3 convergence margin).
+CENTRING_WEIGHT = 0.01
+CENTRING_TOLERANCE = 1e-4
+
 _CORE_BACKENDS = {
     "cma": multistart_cma_es,
     "differential_evolution": multistart_differential_evolution,
@@ -430,6 +437,11 @@ def optimize_assignment(
             "notes) -- remove hybridisation_constraints from this "
             "config or set refine_jac: false")
 
+    # Centring inside the derived bond bands (ADR-0028 (c)): on by default,
+    # a no-op for configs without derived bonds.
+    centring_cfg = (ideal_bond_config(cfg)
+                    if opt_cfg.get("centring", True) is not False else None)
+
     # Validated before the try below, like refine_jac: a bad
     # topology_grouping block is a configuration error, not a failed run.
     ledger = EndpointLedger(cfg, grouping_settings(opt_cfg))
@@ -489,6 +501,9 @@ def optimize_assignment(
         for x0, f0 in reps:
             p, e = _stage2(obj, cfg, x0, f0, bounds, refine_methods, refine_max,
                            refine_ftol, refine_jac, verbose, label)
+            if centring_cfg is not None:
+                p, e = _centre(obj, cfg, centring_cfg, p, e, bounds, refine_max,
+                               refine_ftol, verbose)
             key = topology_key(p, cfg) if ledger.enabled else None
             cls = ledger.classes.get(key) if key is not None else None
             results.append(AssignmentResult(
@@ -586,6 +601,28 @@ def _stage2(obj, cfg, best_p, best_e, bounds, refine_methods, refine_max,
             if verbose:
                 print(f"      {method} refined error -> {best_e:.6f}")
 
+    return best_p, best_e
+
+
+def _centre(obj, cfg, centring_cfg, best_p, best_e, bounds, refine_max,
+            refine_ftol, verbose):
+    """Centring (ADR-0028 (c)): from a refined point, minimise
+    E + CENTRING_WEIGHT * E_ideal, E_ideal the objective with every derived
+    bond band shrunk to its ideal length. Where E is zero over a region
+    (wide derived bands), this picks the point of that region with bonds
+    nearest their ideal lengths, which pulls a strained cell back (wurtzite
+    c +11.3 % -> +1.3 %) and moves no published structure more than 2.1 %.
+    Accepted only if E rises by at most CENTRING_TOLERANCE and the
+    topology class is unchanged."""
+    ideal = functools.partial(compute_error, config=centring_cfg)
+    ref = minimize(lambda x: obj(x) + CENTRING_WEIGHT * ideal(x), best_p, method="L-BFGS-B",
+                   bounds=bounds, options=_refine_options("L-BFGS-B", refine_max, refine_ftol))
+    e = obj(ref.x)
+    if e <= best_e + CENTRING_TOLERANCE and topology_key(ref.x, cfg) == topology_key(best_p, cfg):
+        if verbose:
+            print(f"      centred: error {best_e:.6f} -> {e:.6f}, "
+                  f"ideal-bond error {ideal(best_p):.6f} -> {ideal(ref.x):.6f}")
+        return ref.x, e
     return best_p, best_e
 
 
