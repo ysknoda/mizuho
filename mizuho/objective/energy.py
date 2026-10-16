@@ -256,7 +256,10 @@ def compute_error(param_vector: np.ndarray, config: dict,
         # pair can be checked by species after cutoff/self masking below.
         ni_species = np.array(
             [ne for ne, idxs in zip(neigh_elements, ni_parts) for _ in idxs])
-        if len(ni_arr) < 2:
+        # One neighbour atom is enough: its periodic images are distinct
+        # neighbours and subtend angles at the centre (ADR-0001). The
+        # per-centre K < 2 test below decides whether triplets exist.
+        if len(ni_arr) == 0:
             continue
 
         if "angle_cutoff" in ac:

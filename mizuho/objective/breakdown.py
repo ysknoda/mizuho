@@ -228,7 +228,8 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
             ref_dmax = max((bond_dmax.get((center_e, ne), 0.0) for ne in neigh_elements), default=0.0)
             ang_cutoff = 1.5 * ref_dmax if ref_dmax > 0 else 5.0
 
-        if len(ni_arr) < 2:
+        # Same test as energy.py: one atom's images are enough (ADR-0001).
+        if len(ni_arr) == 0:
             result["angle"].append({
                 "label": label, "atom_center": center_e, "atom_neighbor": neigh_spec,
                 "n_triplets": 0, "n_violated": 0,

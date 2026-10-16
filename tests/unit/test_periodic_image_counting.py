@@ -117,3 +117,47 @@ def test_breakdown_still_agrees_with_compute_error():
             "cn_min": 6, "cn_max": 6, "cutoff_distance": 3.40}]})
     assert error_breakdown(pv, cfg)["total"] == pytest.approx(
         compute_error(pv, cfg), abs=1e-9)
+
+
+# (name, lattice constant, atoms, centre, neighbour, cutoff, counted angles,
+#  min angle, max angle). Angles above ignore_trans_above (150 deg) are not
+# counted. Simple cubic: 6 neighbours, C(6,2) = 15 pairs, 3 of them at 180,
+# 12 at 90. CsCl: 8 Cl at the cube corners, C(8,2) = 28 pairs: 12 at
+# arccos(1/3) = 70.53, 12 at arccos(-1/3) = 109.47, 4 at 180.
+_LONE_NEIGHBOUR_CASES = [
+    ("simple cubic Si", 2.35, {"Si": [[0, 0, 0]]}, "Si", "Si", 2.60,
+     12, 90.0, 90.0),
+    ("caesium chloride CsCl", 4.11, {"Cs": [[0, 0, 0]], "Cl": [[.5, .5, .5]]},
+     "Cs", "Cl", 4.00, 24, 70.5288, 109.4712),
+]
+
+
+@pytest.mark.parametrize("name,a,atoms,centre,neigh,cutoff,n_angles,lo,hi",
+                         _LONE_NEIGHBOUR_CASES, ids=[c[0] for c in _LONE_NEIGHBOUR_CASES])
+def test_angle_term_counts_images_of_a_lone_neighbour_atom(
+        name, a, atoms, centre, neigh, cutoff, n_angles, lo, hi):
+    """A neighbour species with one atom in the cell still has many
+    neighbour images, and they subtend real angles at the centre
+    (ADR-0001). The angle term used to skip such a constraint outright, so
+    a one-atom square net scored zero against a tetrahedral band."""
+    cfg, pv = _p1_config(a, atoms, {"angle_constraints": [{
+        "atom_center": centre, "atom_neighbor": neigh,
+        "angle_min": 105.0, "angle_max": 115.0, "angle_cutoff": cutoff}]})
+    entry = error_breakdown(pv, cfg)["angle"][0]
+    assert entry["n_triplets"] == n_angles
+    assert entry["angle_min_observed"] == pytest.approx(lo, abs=1e-3)
+    assert entry["angle_max_observed"] == pytest.approx(hi, abs=1e-3)
+    assert entry["penalty"] > 0.0
+    assert compute_error(pv, cfg) == pytest.approx(error_breakdown(pv, cfg)["total"], abs=1e-9)
+    assert compute_error(pv, cfg) > 0.0
+
+
+def test_angle_term_still_accepts_diamond():
+    """Diamond Si's 109.47 deg angles sit inside [105, 115]: penalty 0."""
+    cfg, pv = _p1_config(5.43, _CASES[3][2], {"angle_constraints": [{
+        "atom_center": "Si", "atom_neighbor": "Si",
+        "angle_min": 105.0, "angle_max": 115.0, "angle_cutoff": 2.70}]})
+    entry = error_breakdown(pv, cfg)["angle"][0]
+    assert entry["n_triplets"] == 8 * 6
+    assert entry["angle_min_observed"] == pytest.approx(109.4712, abs=1e-3)
+    assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-12)
