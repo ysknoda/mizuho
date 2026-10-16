@@ -46,7 +46,24 @@ group the composition fits, on the order of hours for a binary compound.
 
 NaCl, the `tests/fixtures/auto/nacl.yaml` constraints, seed 42, restricted to P4mm (99) and Fm-3m
 (225): Fm-3m ranks first at error 0 and is detected as 225 from 1e-4 to 1e-1 A; P4mm's best
-reaches 0.036. 367 s. The run over all 230 groups is recorded when it finishes.
+reaches 0.036. 367 s.
+
+All 230 groups, one worker, seed 42, the known-answer constraints (`tests/fixtures/auto/*.yaml`),
+ranked by `_ranking_key` (threshold 1e-3):
+
+| compound | entries | at or below 1e-3 | rank 1 | published group's best rank | time |
+| --- | --- | --- | --- | --- | --- |
+| NaCl | 4642 | 738 | Fm-3m (225), Na@a Cl@b, 0 | 1 | 15.0 h |
+| CsCl | 1421 | 148 | Pm-3m (221), Cs@a Cl@b, 0 | 1 | 2.3 h |
+| ZnO | 4642 | 181 | F-43m (216), Zn@a O@c, 0 (zinc blende) | 14 (P6_3mc, 186, Zn@b O@b, 0) | 13.9 h |
+
+NaCl and CsCl: the published group ranks first. ZnO: wurtzite (186) reaches error 0 but ranks
+14th, behind zinc blende (216, 215), a P6_3/mmc entry (194) and tetragonal groups, all at zero
+error. Wurtzite and zinc blende are two stackings of the same corner-sharing ZnO4 tetrahedra
+(zinc blende ZnO is a known metastable polymorph); the constraints, which state only CN 4 and
+the Zn-O band, cannot tell them apart, and the symmetry-first ranking then prefers the cubic
+group. This is the distinguishability limit of ADR-0027 in the space-group search: telling
+polytypes apart needs information beyond first-shell constraints (energy, e.g. DFT).
 
 ## Consequences
 
