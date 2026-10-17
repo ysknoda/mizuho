@@ -171,10 +171,34 @@ def test_coupling_angle_constraint_can_be_disabled_independently():
     assert not any(a["atom_center"] == "O" for a in new_cfg["angle_constraints"])
 
 
-def test_coupling_cutoff_derived_from_existing_bond_constraint():
+def test_coupling_cutoff_is_the_measured_shell_cutoff_reaching_the_anion():
+    """The Ti(O) coordination constraint's cutoff (2.2), not the Ti-O
+    distance_max (2.05): a bond optimised onto its band's long end sits at
+    distance_max and the strict `< cutoff` test would drop it from the
+    anion's angles (ADR-0030)."""
     cfg = _rutile_like_config()
     new_cfg = augment_coupling_constraints(cfg)
     o_cst = next(c for c in new_cfg["coordination_constraints"]
+                 if c["center_atom"] == "O")
+    o_ang = next(a for a in new_cfg["angle_constraints"] if a["atom_center"] == "O")
+    assert o_cst["cutoff_distance"] == 2.2
+    assert o_ang["angle_cutoff"] == 2.2
+
+
+def test_coupling_cutoff_takes_the_largest_stated_shell_cutoff():
+    cfg = _rutile_like_config()
+    cfg["bond_constraints"][0]["cutoff"] = 2.73
+    o_ang = next(a for a in augment_coupling_constraints(cfg)["angle_constraints"]
+                 if a["atom_center"] == "O")
+    assert o_ang["angle_cutoff"] == 2.73
+
+
+def test_coupling_cutoff_falls_back_to_distance_max_when_none_is_stated():
+    cfg = _rutile_like_config()
+    cfg["coordination_constraints"] = []
+    cfg["angle_constraints"] = [
+        {"atom_center": "Ti", "atom_neighbor": "O", "angle_min": 70, "angle_max": 110}]
+    o_cst = next(c for c in augment_coupling_constraints(cfg)["coordination_constraints"]
                  if c["center_atom"] == "O")
     assert o_cst["cutoff_distance"] == 2.05  # Ti-O distance_max
 

@@ -134,6 +134,32 @@ def _max_bond_distance_for(element: str, bond_constraints: list,
     return best
 
 
+def _measured_cutoff_for(anion: str, coord_csts: list, bond_csts: list,
+                         present: set, ionic_q: Dict[str, float]) -> Optional[float]:
+    """Largest measured shell cutoff that reaches `anion`: the
+    cutoff_distance of every coordination constraint centred on it or
+    counting it as a neighbour, and the `cutoff` of every bond constraint
+    that touches it. None when no constraint states one.
+
+    The anion's coupling constraints need such a cutoff (ADR-0004), not a
+    bond's distance_max: a bond optimised onto its band's long end sits
+    exactly at distance_max, and the strict `< cutoff` test then drops it
+    from the anion's angles (ADR-0030)."""
+    best = None
+    for c in coord_csts:
+        if (c["center_atom"] == anion
+                or anion in _expand_wildcard(c["neighbor_atom"], present,
+                                             c["center_atom"], ionic_q)):
+            best = c["cutoff_distance"] if best is None else max(best, c["cutoff_distance"])
+    for bc in bond_csts:
+        if "cutoff" not in bc:
+            continue
+        if (bc["atom1"] == anion
+                or anion in _expand_wildcard(bc["atom2"], present, bc["atom1"], ionic_q)):
+            best = bc["cutoff"] if best is None else max(best, bc["cutoff"])
+    return best
+
+
 # Bridging angle between two tetrahedra of high-valence cations (Si, Ge,
 # P, As(V), S(VI), ...): they share corners only, and the T-X-T angle lies
 # between 120 and 180 deg (Liebau, Structural Chemistry of Silicates, 1985;
@@ -291,9 +317,9 @@ def augment_coupling_constraints(config: dict) -> dict:
     injected  = False
 
     # A measured cutoff (ADR-0004) when the config supplies one, as a
-    # number or per anion; otherwise the largest bond distance_max, which
-    # sits only just past the real bond and leaves the soft count
-    # unsaturated.
+    # number or per anion; otherwise the largest measured shell cutoff
+    # that reaches the anion (_measured_cutoff_for); only when no
+    # constraint states one, the largest bond distance_max.
     auto_cutoff = config.get("auto_coupling_cutoff")
 
     for anion in targets:
@@ -301,6 +327,8 @@ def augment_coupling_constraints(config: dict) -> dict:
             cutoff = auto_cutoff.get(anion)
         else:
             cutoff = auto_cutoff
+        if cutoff is None:
+            cutoff = _measured_cutoff_for(anion, coord_csts, bond_csts, present, ionic_q)
         if cutoff is None:
             cutoff = _max_bond_distance_for(anion, bond_csts, present, ionic_q)
         if cutoff is None:
