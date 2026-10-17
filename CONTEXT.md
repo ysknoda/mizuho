@@ -83,8 +83,13 @@ _Avoid_: ground truth, target structure, experimental data
 
 **Penalty term**:
 One named contribution to the total error (overlap, bond, angle, CN, repulsion, charge, volume,
-aspect ratio, cell validity, hybridisation).
+density, void, aspect ratio, cell validity, hybridisation).
 _Avoid_: energy term, cost component
+
+**R_hole (largest empty sphere)**:
+The largest distance from a point of the cell to the nearest atom centre, no radii; the void
+term bounds it (ADR-0031). Not the total void volume, which is the volume per formula unit again.
+_Avoid_: porosity, void fraction
 
 **Soft coordination number**:
 The logistic-weighted neighbour count the coordination term actually evaluates, so the penalty has

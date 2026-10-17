@@ -43,6 +43,7 @@ from ..data import build_point, get_ops
 from ..data._orbit import _frac_delta
 from ..lattice import _IMAGE_SHIFTS, ZERO_SHIFT_INDEX, get_lattice_system
 from ..structure import build_structure
+from .cell_terms import void_settings
 from .energy import compute_error
 from .penalties import (
     GRAY_BAND_WIDTHS, _cn_scale, _expand_wildcard, _integrality_applies, _midpoint_scale,
@@ -444,6 +445,12 @@ def make_gradient_fn(config, reference_param_vector):
     residual_config = dict(config)
     residual_config.pop("coordination_constraints", None)
     residual_config.pop("volume_constraint", None)
+    # The void term's default depends on whether volume_constraint is
+    # present (ADR-0031); keep the original config's resolved setting so
+    # dropping volume_constraint here does not switch the default on.
+    vs = void_settings(config)
+    residual_config["void"] = (False if vs is None else
+                               {"r_hole_min": vs[0], "r_hole_max": vs[1], "weight": vs[2]})
 
     def grad_fn(x):
         x = np.asarray(x, dtype=float)

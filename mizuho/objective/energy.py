@@ -14,6 +14,7 @@ from ..lattice import (
 )
 from ..structure import build_structure
 from .bond_valence import bond_valence_term
+from .cell_terms import density_term, void_term
 from .penalties import (
     _gray_band_penalty, _integrality_applies, reject_removed_keys,
     _estimate_volume, _expand_wildcard, _cn_scale, _hard_radius, _midpoint_scale,
@@ -518,6 +519,23 @@ def compute_error(param_vector: np.ndarray, config: dict,
         if verbose and vol_err > 0:
             log.append(f"  Volume: V={V_cell:.2f} A^3  "
                        f"(req [{V_lo:.1f},{V_hi:.1f}]), P={vol_err:.4f}")
+
+    # ------------------------------------------------------------------
+    # 7b. Volume per formula unit from a measured density (ADR-0030) and
+    #     the largest empty sphere (ADR-0031); see cell_terms.
+    # ------------------------------------------------------------------
+    dens = density_term(lat, species, config)
+    if dens is not None:
+        total += dens["penalty"]
+        if verbose and dens["penalty"] > 0:
+            log.append(f"  Density: V/fu={dens['V_fu']:.2f} A^3  "
+                       f"(req [{dens['V_min']:.2f},{dens['V_max']:.2f}]), P={dens['penalty']:.4f}")
+    void = void_term(lat, frac, config)
+    if void is not None:
+        total += void["penalty"]
+        if verbose and void["penalty"] > 0:
+            log.append(f"  Void: R_hole={void['R_hole']:.3f} A  "
+                       f"(req [{void['r_min']:.2f},{void['r_max']:.2f}]), P={void['penalty']:.4f}")
 
     # ------------------------------------------------------------------
     # 8. Aspect-ratio constraint (one-sided penalty on axis anisotropy)

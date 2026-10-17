@@ -1,0 +1,17 @@
+# Anatase TiO2, automatic space-group search. Expected detected group 141.
+# Opt-in required since ADR-0021.
+#
+# Derived constraints (ADR-0028, ADR-0030): composition, charges and the
+# cited Ti coordination number only.
+# Density: D(meas.) = 3.79-3.97 g/cm^3 (Handbook of Mineralogy;
+# references/anatase.pdf, as tests/fixtures/anatase_tio2.yaml, ADR-0017):
+# V/fu 33.41-34.99 A^3.
+mode: auto_spacegroup
+composition: TiO2
+ionic_charges: {Ti: 4, O: -2}
+charge_tolerance_min: 0
+charge_tolerance_max: 0
+coordination_numbers: {Ti: 6}
+density_g_cm3: [3.79, 3.97]
+tree_search: {max_sites: 4, max_formula_units: 4}
+optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}

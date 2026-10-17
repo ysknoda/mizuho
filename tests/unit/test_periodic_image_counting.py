@@ -86,7 +86,7 @@ def test_hard_sphere_overlap_sees_an_atoms_own_periodic_image():
     cell has nothing but its own images for company. Before ADR-0001 the
     overlap term scored exactly 0.0 down to a = 0.2 A, leaving no
     physical floor under a collapsing lattice."""
-    cfg, _ = _p1_config(6.0, {"Na": [[.5, .5, .5]]})
+    cfg, _ = _p1_config(6.0, {"Na": [[.5, .5, .5]]}, {"void": False})  # overlap alone (ADR-0031)
     err = {}
     for a in (6.0, 3.0, 2.0, 1.5, 1.0, 0.5):
         _, pv = _p1_config(a, {"Na": [[.5, .5, .5]]})

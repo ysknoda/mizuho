@@ -28,7 +28,8 @@ EXPECTED = {
     "cscl": {221},
     "si": {227, 194},
     "zno": {186, 216},
-    "tio2": {136, 141},
+    "tio2_rutile": {136},
+    "tio2_anatase": {141},
 }
 
 # Recorded failures at the correct threshold (ADR-0005), with what was seen.
@@ -36,8 +37,12 @@ XFAIL = {
     "nacl": "detected P4mm (99) at 1e-3 A, re-measured 2026-10-14 (ADR-0021)",
     "cscl": "returns a band-slack distortion detected as Pmma (51); 221 never "
     "enters Phase 0's top five",
-    "zno": "detected Pmc2_1 (26) at 1e-3 A, re-measured 2026-10-14 (ADR-0021)",
-    "tio2": "detected Pmc2_1 (26) at 1e-3 A, re-measured 2026-10-14 (ADR-0021)",
+    "zno": "detected Pmc2_1 (26) at 1e-3 A with the hand constraints, 2026-10-14 "
+    "(ADR-0021); not re-measured since the derived constraints and density (ADR-0030)",
+    "tio2_rutile": "not measured since the split into rutile and anatase (ADR-0030); "
+    "the combined fixture detected Pmc2_1 (26), 2026-10-14",
+    "tio2_anatase": "not measured since the split into rutile and anatase (ADR-0030); "
+    "the combined fixture detected Pmc2_1 (26), 2026-10-14",
     "si": "detected Imma (74) at 1e-4 to 1e-1 A with integer CN 4, re-measured "
     "2026-10-14; the former P4/mmm net with soft CN 4 at integer CN 2 is closed "
     "by the gray band and compact support",

@@ -1,5 +1,8 @@
 """Unit tests for mizuho.objective."""
 
+# Every config below checks one term on a sparse hand-built cell, so each
+# switches off the default void bound (ADR-0031), which such cells exceed.
+
 import math
 
 import numpy as np
@@ -162,9 +165,9 @@ def test_angle_exclude_neighbor_pairs_drops_only_the_excluded_pair():
                "angle_min": 80.0, "angle_max": 100.0,
                "angle_cutoff": 2.0, "weight": 1.0}
 
-    config_no_exclude = {"spacegroup": 1, "wyckoff_sites": sites,
+    config_no_exclude = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
                           "angle_constraints": [dict(base_ac)]}
-    config_excluded = {"spacegroup": 1, "wyckoff_sites": sites,
+    config_excluded = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
                         "angle_constraints": [
                             dict(base_ac, exclude_neighbor_pairs=[["H", "H"]])]}
 
@@ -187,7 +190,7 @@ def test_angle_exclude_neighbor_pairs_is_noop_when_absent():
     ac = {"atom_center": "O", "atom_neighbor": ["Zn", "H"],
           "angle_min": 80.0, "angle_max": 100.0,
           "angle_cutoff": 2.0, "weight": 1.0}
-    config = {"spacegroup": 1, "wyckoff_sites": sites, "angle_constraints": [ac]}
+    config = {"spacegroup": 1, "wyckoff_sites": sites, "void": False, "angle_constraints": [ac]}
 
     assert compute_error(param_vector, config) == pytest.approx((20.0 / 90.0) ** 2, abs=1e-6)
 
@@ -276,7 +279,7 @@ def test_bond_normalised_relative_error_matches_hand_calc():
     sites, pv = _two_atom_case("Zn", "O", d=2.0)
     base_bc = {"atom1": "Zn", "atom2": "O", "distance_min": 1.0,
                "distance_max": 1.5, "cutoff": 5.0, "weight": 2.0}
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "bond_constraints": [dict(base_bc)]}
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False, "bond_constraints": [dict(base_bc)]}
 
     scale = (1.0 + 1.5) / 2.0   # 1.25
     expected = 2.0 * ((2.0 - 1.5) / scale) ** 2
@@ -290,7 +293,7 @@ def test_angle_normalised_relative_error_matches_hand_calc():
     ac = {"atom_center": "O", "atom_neighbor": ["Zn", "H"],
           "angle_min": 80.0, "angle_max": 100.0,
           "angle_cutoff": 2.0, "weight": 1.0}
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "angle_constraints": [dict(ac)]}
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False, "angle_constraints": [dict(ac)]}
 
     scale = (80.0 + 100.0) / 2.0   # 90.0
     expected = ((120.0 - 100.0) / scale) ** 2
@@ -322,7 +325,7 @@ def test_cn_normalised_relative_error_matches_hand_calc():
     sites, pv = _center_with_neighbors_case(3, d=1.5)
     cc = {"center_atom": "C", "neighbor_atom": "Nb", "cn_min": 2, "cn_max": 2,
           "cutoff_distance": 2.0, "weight": 1.5}
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "coordination_constraints": [dict(cc)]}
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False, "coordination_constraints": [dict(cc)]}
 
     cn_i = _soft_coordination_number(np.array([1.5, 1.5, 1.5]), cutoff=2.0, width=0.10)
 
@@ -336,7 +339,7 @@ def test_repulsion_normalised_relative_error_matches_hand_calc():
 
     sites, pv = _two_atom_case("H", "Li", d=1.2)
     rc = {"atom1": "H", "atom2": "Li", "distance_min": 1.5, "weight": 2.0}
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "repulsion_constraints": [dict(rc)]}
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False, "repulsion_constraints": [dict(rc)]}
 
     scale = max(1.5, _SCALE_EPS)   # one-sided: dmin itself
     expected = 2.0 * ((1.5 - 1.2) / scale) ** 2
@@ -354,7 +357,7 @@ def test_charge_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _single_atom_case("Na")
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "ionic_charges": {"Na": 3.0}, "charge_balance_weight": 2.0}
 
     charge_scale = 3.0   # sum(abs(charges)) over the single Na atom
@@ -366,7 +369,7 @@ def test_volume_normalised_relative_error_matches_hand_calc():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _single_atom_case("Na", a=10.0)   # V_cell = 10^3 = 1000 A^3
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "volume_constraint": {"volume_min": 200.0, "volume_max": 800.0, "weight": 3.0}}
 
     scale = (200.0 + 800.0) / 2.0   # 500.0
@@ -385,7 +388,7 @@ def test_aspect_ratio_zero_penalty_when_isotropic():
 
     sites, _ = _single_atom_case("Na", a=10.0)
     pv = np.array([10.0, 10.0, 10.0, 90.0, 90.0, 90.0, 0.5, 0.5, 0.5])
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "aspect_ratio_constraint": {"ratio_max": 3.0, "weight": 5.0}}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
@@ -396,7 +399,7 @@ def test_aspect_ratio_zero_penalty_within_band():
     sites, _ = _single_atom_case("Na", a=10.0)
     # ratio = 20/10 = 2.0, within ratio_max=3.0 -> no penalty.
     pv = np.array([10.0, 10.0, 20.0, 90.0, 90.0, 90.0, 0.5, 0.5, 0.5])
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "aspect_ratio_constraint": {"ratio_max": 3.0, "weight": 5.0}}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
@@ -407,7 +410,7 @@ def test_aspect_ratio_penalises_excessive_anisotropy_matches_hand_calc():
     sites, _ = _single_atom_case("Na", a=10.0)
     # ratio = 40/10 = 4.0, exceeds ratio_max=3.0 by 1.0
     pv = np.array([10.0, 10.0, 40.0, 90.0, 90.0, 90.0, 0.5, 0.5, 0.5])
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "aspect_ratio_constraint": {"ratio_max": 3.0, "weight": 5.0}}
 
     scale = (1.0 + 3.0) / 2.0   # _midpoint_scale(1.0, 3.0) == 2.0
@@ -426,7 +429,7 @@ def test_aspect_ratio_absent_by_default():
     # a = b = 1.0 A cell is a genuine self-overlap and no longer isolates
     # the aspect-ratio term.
     pv = np.array([4.0, 4.0, 100.0, 90.0, 90.0, 90.0, 0.5, 0.5, 0.5])
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites}
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
 
@@ -441,7 +444,7 @@ def test_aspect_ratio_trivially_satisfied_for_cubic_system():
     sites = assignments_to_sites(resolve_fixed_assignment(
         225, [{"element": "Na", "letter": "a"}, {"element": "Cl", "letter": "b"}]))
     pv = np.array([5.5])
-    cfg = {"spacegroup": 225, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 225, "wyckoff_sites": sites, "void": False,
            "aspect_ratio_constraint": {"ratio_max": 1.01, "weight": 1000.0}}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
@@ -466,7 +469,7 @@ def test_cell_validity_zero_penalty_when_orthogonal():
     from mizuho.objective.energy import compute_error
 
     sites, pv = _triclinic_atom_case(10.0, 10.0, 10.0, 90.0, 90.0, 90.0)
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "cell_validity_constraint": {"g_min": 0.3, "weight": 5.0}}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
@@ -477,7 +480,7 @@ def test_cell_validity_zero_penalty_for_moderate_monoclinic_angle():
     # beta=100 deg alone (a common monoclinic-like distortion) keeps G
     # well above any reasonable g_min -- must not be penalised.
     sites, pv = _triclinic_atom_case(10.0, 10.0, 10.0, 90.0, 100.0, 90.0)
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "cell_validity_constraint": {"g_min": 0.3, "weight": 5.0}}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
@@ -492,7 +495,7 @@ def test_cell_validity_penalises_near_degenerate_angle_matches_hand_calc():
     # alpha=5 deg) brings Na inside its own 1.90 A contact distance and
     # the total error would no longer isolate the cell-validity term.
     sites, pv = _triclinic_atom_case(10.0, 10.0, 10.0, 30.0, 90.0, 90.0)
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "cell_validity_constraint": {"g_min": 0.3, "weight": 5.0}}
 
     ca, cb, cg = math.cos(math.radians(30.0)), math.cos(math.radians(90.0)), math.cos(math.radians(90.0))
@@ -510,7 +513,7 @@ def test_cell_validity_absent_by_default():
     # configured -> no effect from this term (build_lattice_matrix's own
     # silent floor-to-degenerate still applies; just not penalised here).
     sites, pv = _triclinic_atom_case(10.0, 10.0, 10.0, 30.0, 90.0, 90.0)
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites}
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
 
@@ -526,7 +529,7 @@ def test_cell_validity_trivially_satisfied_for_cubic_system():
     sites = assignments_to_sites(resolve_fixed_assignment(
         225, [{"element": "Na", "letter": "a"}, {"element": "Cl", "letter": "b"}]))
     pv = np.array([5.5])
-    cfg = {"spacegroup": 225, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 225, "wyckoff_sites": sites, "void": False,
            "cell_validity_constraint": {"g_min": 0.999, "weight": 1000.0}}
     assert compute_error(pv, cfg) == pytest.approx(0.0, abs=1e-9)
 
@@ -541,7 +544,7 @@ def test_removed_normalize_penalties_key_is_rejected(entry):
     fn = {"compute_error": compute_error, "error_breakdown": error_breakdown}[entry]
     sites, pv = _single_atom_case("Na")
     for value in (True, False):
-        cfg = {"spacegroup": 1, "wyckoff_sites": sites, "normalize_penalties": value}
+        cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False, "normalize_penalties": value}
         with pytest.raises(ValueError, match="0009"):
             fn(pv, cfg)
 
@@ -553,7 +556,7 @@ def test_removed_normalize_penalties_key_is_rejected(entry):
 
 def _cn_config(center_charge, d, n=3, cn=(2, 3)):
     sites, pv = _center_with_neighbors_case(n, d=d)
-    cfg = {"spacegroup": 1, "wyckoff_sites": sites,
+    cfg = {"spacegroup": 1, "wyckoff_sites": sites, "void": False,
            "coordination_constraints": [
                {"center_atom": "C", "neighbor_atom": "Nb", "cn_min": cn[0],
                 "cn_max": cn[1], "cutoff_distance": 2.0, "weight": 1.5}]}

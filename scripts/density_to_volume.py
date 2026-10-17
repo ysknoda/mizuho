@@ -17,23 +17,13 @@ is never used: it is computed from a cell and would bring the reference back in.
 
 import argparse
 import re
+import sys
+from pathlib import Path
 
-# IUPAC CIAAW abridged standard atomic weights (2021), conventional values.
-ATOMIC_WEIGHT = {
-    "H": 1.008,
-    "O": 15.999,
-    "F": 18.998,
-    "Mg": 24.305,
-    "Al": 26.982,
-    "Si": 28.085,
-    "S": 32.06,
-    "Ca": 40.078,
-    "Ti": 47.867,
-    "Fe": 55.845,
-    "Zn": 65.38,
-    "As": 74.922,
-}
-AVOGADRO = 6.02214076e23  # mol^-1, exact (SI 2019)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from mizuho.data.atomic_weights import ATOMIC_WEIGHT, AVOGADRO  # noqa: E402
+
 SINGLE_VALUE_MARGIN = 0.02
 
 

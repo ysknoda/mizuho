@@ -14,6 +14,7 @@ from ..lattice import (
 from ..structure import build_structure
 from .energy import compute_error
 from .bond_valence import bond_valence_term
+from .cell_terms import density_term, r_hole, void_term
 from .penalties import (
     GRAY_BAND_WIDTHS, _gray_band_penalty, _integrality_applies,
     reject_removed_keys,
@@ -458,6 +459,16 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
     else:
         result["volume"] = None
 
+    # 7b. Density (volume per formula unit) and largest empty sphere, the
+    # same functions energy.py calls (ADR-0030, ADR-0031).
+    result["density"] = density_term(lat, species, config)
+    result["void"] = void_term(lat, frac, config)
+    if result["void"] is not None and not result["void"]["exact"]:
+        # The objective stops at a grid bound when it proves the penalty
+        # zero; the report gives the exact value.
+        result["void"] = dict(result["void"], R_hole=r_hole(lat, frac), exact=True)
+    cell_err = sum(t["penalty"] for t in (result["density"], result["void"]) if t is not None)
+
     # 8. Aspect-ratio constraint (mirrors energy.py's own section 8 --
     # see that module for the full formula rationale)
     arc = config.get("aspect_ratio_constraint")
@@ -523,7 +534,8 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
                       # time.
                       + (result["volume"]["penalty"] if result["volume"] else 0.0)
                       + ar_err
-                      + cv_err)
+                      + cv_err
+                      + cell_err)
         hybrid_err = max(0.0, total_full - sub_total)
     result["hybrid"] = hybrid_err
 
@@ -538,6 +550,7 @@ def error_breakdown(param_vector: np.ndarray, config: dict) -> dict:
         + (result["volume"]["penalty"] if result["volume"] else 0.0)
         + ar_err
         + cv_err
+        + cell_err
         + hybrid_err
     )
 
@@ -683,6 +696,15 @@ def print_error_breakdown(bd: dict) -> None:
                   f"est={v['V_est']:.1f}  "
                   f"req=[{v['V_min']:.0f},{v['V_max']:.0f}]")
         _row("Volume", "", v["penalty"], detail=detail)
+
+    d = bd.get("density")
+    if d is not None:
+        _row("Density", "volume per formula unit", d["penalty"],
+             detail=f"V/fu={d['V_fu']:.2f} A^3  req=[{d['V_min']:.2f},{d['V_max']:.2f}]")
+    vd = bd.get("void")
+    if vd is not None:
+        _row("Void", "largest empty sphere", vd["penalty"],
+             detail=f"R_hole {vd['R_hole']:.3f} A  req=[{vd['r_min']:.2f},{vd['r_max']:.2f}]")
 
     # 8. Hybridisation
     if bd.get("hybrid", 0.0) > 0:

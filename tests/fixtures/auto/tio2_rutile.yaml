@@ -1,15 +1,19 @@
-# TiO2, automatic space-group search. Expected detected group 136 (rutile)
-# or its polytype 141 (anatase).
+# Rutile TiO2, automatic space-group search. Expected detected group 136.
 # Opt-in required since ADR-0021.
+#
+# Derived constraints (ADR-0028, ADR-0030): composition, charges and the
+# cited Ti coordination number only; bond band, cutoffs, octahedral angles,
+# anion CN and bond-valence tolerance are derived.
+# Density: D(meas.) = 4.23(2) g/cm^3 (Handbook of Mineralogy, Anthony et al.,
+# eds., Mineralogical Society of America; references/rutile.pdf), the stated
+# uncertainty as the band (ADR-0017): V/fu 31.20-31.50 A^3; the Handbook's
+# own cell (a 4.5937, c 2.9587 A, Z 2) gives 31.22.
 mode: auto_spacegroup
 composition: TiO2
 ionic_charges: {Ti: 4, O: -2}
 charge_tolerance_min: 0
 charge_tolerance_max: 0
-bond_constraints:
-  - {atom1: Ti, atom2: O, distance_min: 1.90, distance_max: 2.03, cutoff: 2.73, weight: 1.0}
-coordination_constraints:
-  - {center_atom: Ti, neighbor_atom: O, cn_min: 6, cn_max: 6, cutoff_distance: 2.73, weight: 1.5}
-  - {center_atom: O, neighbor_atom: Ti, cn_min: 3, cn_max: 3, cutoff_distance: 2.73, weight: 1.0}
+coordination_numbers: {Ti: 6}
+density_g_cm3: [4.21, 4.25]
 tree_search: {max_sites: 4, max_formula_units: 4}
 optimization: {n_restarts: 4, cma_maxiter: 150, refine_maxiter: 200, seed: 42}
