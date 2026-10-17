@@ -55,21 +55,77 @@ ranked by `_ranking_key` (threshold 1e-3):
 | --- | --- | --- | --- | --- | --- |
 | NaCl | 4642 | 738 | Fm-3m (225), Na@a Cl@b, 0 | 1 | 15.0 h |
 | CsCl | 1421 | 148 | Pm-3m (221), Cs@a Cl@b, 0 | 1 | 2.3 h |
-| ZnO | 4642 | 181 | F-43m (216), Zn@a O@c, 0 (zinc blende) | 14 (P6_3mc, 186, Zn@b O@b, 0) | 13.9 h |
+| Si | 925 | 53 | Fd-3m (227), Si@a, 0 | 227: 1; 194: 6 (Si@f, 0) | 0.5 h |
+| ZnO | 4642 | 163 | F-43m (216), Zn@a O@c, 0 (zinc blende) | 216: 1; 186: 13 (Zn@a Zn@b O@a O@b, 0) | 12.2 h |
+| TiO2 | 5507 | 736 | Pn-3m (224), Ti@b O@e, 0 | 141: 36 (Ti@a O@e, 0); 136: 39 (Ti@a O@f, 0) | 19.4 h |
 
-NaCl and CsCl: the published group ranks first. ZnO: wurtzite (186) reaches error 0 but ranks
-14th, behind zinc blende (216, 215), a P6_3/mmc entry (194) and tetragonal groups, all at zero
-error. Wurtzite and zinc blende are two stackings of the same corner-sharing ZnO4 tetrahedra
+Ranks are over the raw record (`scripts/exhaustive_table.py`), before supergroup promotion and
+the topology-class merge; `run`'s merged ranking is given below where it differs. Si, ZnO and
+TiO2 ran on 2026-10-16/17 on a local machine, three runs at once, one worker each; NaCl, CsCl
+and the first ZnO run ran in a container, so the times compare only roughly. TiO2's promotion
+and ranking after the last group took a further 6.4 h (2,673 re-optimisations). Si and ZnO ran
+at a9b05d7, after the angle-term fix below; TiO2's fixture has no angle constraint.
+
+NaCl, CsCl and Si: the published group ranks first. Si's merged ranking is Fd-3m, then P6_3/mmc
+(194, hexagonal diamond), its polytype; the P4_132 and P4_332 entries at zero error between them
+in the record have diamond's coordination sequence (4, 12, 24, 42, 64, ...) and merge into
+Fd-3m's class.
+
+ZnO: wurtzite (186) reaches error 0 but ranks 13th, behind zinc blende (216, 215) and
+tetragonal groups, all at zero error; merged, 216 is first, 137, 136, 138 and 131 follow, and
+186 is 6th. Wurtzite and zinc blende are two stackings of the same corner-sharing ZnO4 tetrahedra
 (zinc blende ZnO is a known metastable polymorph); the constraints, which state only CN 4 and
 the Zn-O band, cannot tell them apart, and the symmetry-first ranking then prefers the cubic
 group. This is the distinguishability limit of ADR-0027 in the space-group search: telling
-polytypes apart needs information beyond first-shell constraints (energy, e.g. DFT).
+polytypes apart needs information beyond first-shell constraints (energy, e.g. DFT). The
+tetragonal zero-error classes are not characterised.
+
+TiO2: every one of the first 37 merged entries is at zero error. Anatase (141) is 8th and
+rutile (136) 11th, behind cubic (224, 213, 205) and hexagonal (194, 191) structures.
+
+### The angle term skipped a lone neighbour atom (fixed in a9b05d7)
+
+The first Si run put a one-atom P4/mmm square net (Si@a, angles 90 deg against [105, 115]) third
+in the merged ranking at error 8e-6: the angle term skipped any constraint whose neighbour
+species had one atom in the cell, although that atom's images are neighbours (ADR-0001). After
+the fix it scores 0.082. Si's record is otherwise unchanged (the false entry reached the threshold
+only after promotion). ZnO's zero-error entries fell from 181 to 163 and 186's rank from 14 to
+13; the earlier ZnO row is replaced by the rerun.
+
+### Zero error is not the published structure (measured 2026-10-17)
+
+The constraints state the cation-anion band, CN and (Si, ZnO) the cation-centred angle; nothing
+bounds the like-ion distances. For every recorded entry at or below 1e-3:
+
+| compound | entries | on a `lattice_bounds` edge | shortest like-ion distance, median [10-90 %] | published |
+| --- | --- | --- | --- | --- |
+| Si | 53 | 0 | Si-Si 2.34 [2.30, 2.38] A | Si-Si 2.352 A (bond) |
+| ZnO | 163 | 27 | Zn-Zn 2.37 [2.27, 3.17] A | Zn-Zn 3.210 A (`wurtzite.cif`) |
+| TiO2 | 736 | 342 | O-O 1.81 [1.38, 2.46] A | O-O 2.535 A rutile, 2.468 A anatase |
+
+Most ZnO entries share tetrahedron edges (Zn-O-Zn, the O-centred angle, is unconstrained). Most
+TiO2 entries put two oxide ions 1.4-2.5 A apart, and almost half are on a bound (ADR-0006: the
+box is doing the physics). None of the four zero-error entries in 136 or 141 is rutile or anatase:
+136 Ti@a O@f has c = 2.500 A, the tetragonal lower bound; 141 Ti@a O@e has O-O 1.57 A. Published
+rutile scores 0 under the fixture, so a family of zero-error structures runs through it and the
+optimiser stops anywhere along it. Published anatase (`anatase_origin2.cif`) scores 0.0020,
+above the threshold, from the bond-valence term (Ti BVS 4.28 against 4 +- 0.1).
+
+So TiO2's ranking measures the constraints, not the search: CN 6/3 and a Ti-O band admit hundreds
+of zero-error structures, most of them unphysical, and the symmetry-first rule picks the most
+symmetric. The exhaustive table is a ground truth for the search only where the published
+structure is the objective's unique zero-error class (ADR-0007). This holds for Si (up to
+polytypes) and not for ZnO or TiO2; NaCl and CsCl were not measured this way, their records
+having been lost with the container.
 
 ## Consequences
 
 - The exhaustive results are a ground-truth table for L1 (ADR-0020): for each known-answer
   compound, the error and class every group reaches. Any Phase 0 strategy (PUCT, flat, AB-MCTS
   at L1) can be replayed against that table instead of re-optimising.
+  It is a ground truth for the search only where the published structure is the unique
+  zero-error class; for ZnO and TiO2 it is not yet (see "Zero error is not the published
+  structure").
 - `run`'s ranking order changes for every automatic strategy: a constraint-satisfying entry in a
   higher group outranks a lower-error one in a lower group.
 
