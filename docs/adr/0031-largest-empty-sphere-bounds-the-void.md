@@ -57,3 +57,14 @@ of 2026-10-17: a void term, which can also be asked for open structures on purpo
   R_hole adds nothing for TiO2; it matters without one, and as a request for open structures.
 - Cost: about 5-8 ms an evaluation at random parameters against an objective of 1.5-6 ms; nearly
   nothing for dense structures, which the grid bound settles.
+
+## Correction: not in Phase 1's local shells (2026-10-20)
+
+Phase 1 ranks assignments by solving local shells (`geometry/local_shell.build_mini_config`), which
+leave out the volume as a whole-cell quantity. The void bound is one too, but with no volume there
+the default switched on: every local-shell evaluation ran it. The first ADR-0030 runs were 3-9
+times slower per group than ADR-0026's, rutile sat in Pmmm's Phase 1 for over 12 h, and ZnO
+crashed in P-1 on a collapsed trial cell. Local shells now set `void: false`, and a singular cell
+skips the term. The default also changed which assignments reach Phase 2: for rutile in P4_2/mnm,
+8 of 50 (`mizuho candidates`, old code against new). Those runs were stopped and restarted from
+scratch; their records are kept under `runs/exhaustive_adr0030/pre_fix/`.

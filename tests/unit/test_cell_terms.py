@@ -199,3 +199,19 @@ def test_r_hole_min_asks_for_an_open_structure():
     dense = void_term(np.eye(3) * 3.0, [[0, 0, 0]], cfg)
     open_ = void_term(np.diag([2.5, 2.5, 20.0]), [[0, 0, 0]], cfg)
     assert dense["penalty"] > 0.0 and open_["penalty"] == 0.0
+
+
+def test_void_term_skips_a_collapsed_cell():
+    """A singular lattice (CMA-ES can propose one in triclinic groups)
+    must not raise; it crashed the first ADR-0030 ZnO run in P-1."""
+    lat = np.array([[3.0, 0, 0], [0, 3.0, 0], [3.0, 3.0, 0]])
+    assert void_term(lat, [[0, 0, 0]], {}) is None
+
+
+def test_local_shell_configs_switch_the_void_bound_off():
+    """Phase 1's local-shell problems are not whole cells; the default void
+    bound slowed and broke them (ADR-0031)."""
+    from mizuho.geometry.local_shell import build_mini_config
+    group = {"bond_constraints": [], "angle_constraints": [], "coordination_constraints": []}
+    mini = build_mini_config({"spacegroup": 1, "lattice_bounds": {}}, [{}], group, [0])
+    assert void_settings(mini) is None

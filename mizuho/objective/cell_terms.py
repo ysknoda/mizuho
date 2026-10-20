@@ -210,6 +210,8 @@ def void_term(lat, frac, config: dict):
     s = void_settings(config)
     if s is None:
         return None
+    if abs(np.linalg.det(np.asarray(lat, float))) < 1e-6:
+        return None             # a collapsed cell has no voids; cell validity charges it
     r_min, r_max, w = s
     lower, upper = r_hole_bounds(lat, frac)
     if upper <= r_max and lower >= r_min:

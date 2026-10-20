@@ -223,6 +223,8 @@ def build_mini_config(full_config: dict, full_sites: List[dict], group: dict,
     chosen in Phase 1 and is invariant to free-parameter values, so it
     contributes nothing to a local shell's internal geometry; volume
     and hybridisation are whole-cell concerns, not local-shell ones.
+    The void bound (ADR-0031) is one too, and would otherwise switch on
+    by default here for want of a volume_constraint, so it is off.
     """
     return {
         "spacegroup": full_config["spacegroup"],
@@ -231,6 +233,7 @@ def build_mini_config(full_config: dict, full_sites: List[dict], group: dict,
         "bond_constraints": group["bond_constraints"],
         "angle_constraints": group["angle_constraints"],
         "coordination_constraints": group["coordination_constraints"],
+        "void": False,
     }
 
 
