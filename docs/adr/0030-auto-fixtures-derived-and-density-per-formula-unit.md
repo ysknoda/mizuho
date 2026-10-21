@@ -52,3 +52,27 @@ anatase-class member at 2.33), as ADR-0027 found for silicates.
 - A CdI2-like layered class with closed gaps at anatase's volume is not separated by density or
   by the void term of ADR-0031: first-shell constraints cannot tell it from anatase, as they
   cannot tell wurtzite from zinc blende (ADR-0027's limit).
+
+## Measured: exhaustive reruns (2026-10-20/21, 6a56473, one worker each, three at once)
+
+| fixture | entries | at or below 1e-3 | on a bound | record rank 1 | published group: record / merged rank | time |
+| --- | --- | --- | --- | --- | --- | --- |
+| `tio2_rutile` | 5507 | 206 | 33 | P6_3/mmc (194), Ti@a O@f | 136: 5 / 3 | 28.3 h |
+| `tio2_anatase` | 5507 | 187 | 40 | P6_3/mmc (194), Ti@a O@f | 141: 4 / 2 | 28.2 h |
+| `zno` | 4642 | 330 | 13 | F-43m (216), Zn@a O@c | 216: 1 / 1; 186: 39 / 8 | 16.3 h |
+
+Both TiO2 fixtures give nearly the same merged ranking: a layered P6_3/mmc structure whose
+octahedra share only edges (CdI2-like), then anatase's class, then rutile's. The density does not
+pick the polymorph: within the derived bond and angle bands each topology stretches or squeezes
+into either window. At rutile's density the rutile entry has c = 2.731 A (published 2.959) and
+the anatase entry c = 8.09 A (9.51); at anatase's density the rutile entry swells to
+V_fu 33.4 A^3. The layered class ranks first by ADR-0026's symmetry-first rule (order 24 against
+16). Shortest O-O over the zero-error entries: median 2.42 A (rutile run), 2.50 A (anatase run).
+
+ZnO's zero-error entries doubled from the hand constraints' 163 to 330: the derived bands (Zn-O
+1.86-2.10 A, O-Zn-O [95, 125] deg) are wider than the hand ones (1.93-2.04 A, [105, 115]) and
+admit edge-sharing tetrahedra (median shortest Zn-Zn 2.56 A, wurtzite 3.210). Merged, zinc blende
+is first, tetragonal tetrahedral nets (137, 136, 131) follow, wurtzite is 8th.
+
+So first-shell constraints and a density narrow each compound to a handful of zero-error
+topology classes that contain the published one; they do not rank it first.

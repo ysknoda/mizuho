@@ -83,6 +83,10 @@ tetragonal zero-error classes are not characterised.
 TiO2: every one of the first 37 merged entries is at zero error. Anatase (141) is 8th and
 rutile (136) 11th, behind cubic (224, 213, 205) and hexagonal (194, 191) structures.
 
+With derived constraints and a measured density (ADR-0030, 6a56473): rutile's fixture ranks 136
+fifth (merged third), anatase's ranks 141 fourth (merged second), behind a layered P6_3/mmc class
+in both; ZnO ranks 216 first and 186 39th (merged eighth). See ADR-0030's measured section.
+
 ### The angle term skipped a lone neighbour atom (fixed in a9b05d7)
 
 The first Si run put a one-atom P4/mmm square net (Si@a, angles 90 deg against [105, 115]) third
