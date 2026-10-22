@@ -24,7 +24,7 @@ from .optimize.driver import optimize_one_assignment
 from .optimize.endpoints import grouping_settings
 from .pipeline import (
     _run_auto_composition_mode, _run_composition_pool, build_sg_config,
-    merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
+    class_descriptors, merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
     search_and_rank,
 )
 from .search import auto_search_spacegroups
@@ -431,15 +431,20 @@ def _cmd_run(args) -> None:
     print(f"\n{'='*65}")
     print("  GLOBAL RANKING")
     print(f"{'='*65}")
+    # Dim: 3 framework, 2 layers, 1 chains, 0 clusters; c/e/f: corners,
+    # edges, faces each cation's polyhedron shares (Pauling's third rule).
     print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
-          f"{'Crystal system':>14}  {'Same':>4}  Assignment")
-    print(f"  {'-'*69}")
-    for rank, ((err, sg, asgn, _, _, _), n_same) in enumerate(ranked, 1):
+          f"{'Crystal system':>14}  {'Same':>4}  {'Dim':>3}  {'c/e/f':>11}  Assignment")
+    print(f"  {'-'*90}")
+    for rank, ((err, sg, asgn, _, structure, sg_cfg), n_same) in enumerate(ranked, 1):
         label = " + ".join(
             f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
             for a in asgn)
         cs = CRYSTAL_SYSTEM_OF_SG.get(sg, "?")
-        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {cs:>14}  {n_same:>4}  {label}")
+        desc = class_descriptors(structure, sg_cfg)
+        dim, cef = ("-", "-") if desc is None else (
+            str(desc[0]), "/".join(f"{x:.3g}" for x in desc[1:]))
+        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {cs:>14}  {n_same:>4}  {dim:>3}  {cef:>11}  {label}")
 
     # ----------------------------------------------------------------
     # Output top-N structures

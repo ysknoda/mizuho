@@ -5,6 +5,7 @@ automatic composition discovery).
 """
 
 import sys
+from collections import Counter
 from typing import Dict, List
 
 from .composition import _all_charges_zero, discover_compositions, parse_composition
@@ -165,6 +166,28 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
         valid_asgns = valid_asgns[:max_cands]
         shell_seeds = shell_seeds[:max_cands]
     return valid_asgns, n_found, shell_seeds
+
+
+def class_descriptors(structure: dict, config: dict):
+    """(dimensionality, corners, edges, faces per cation) of a structure's
+    bond graph, or None without cutoffs: what tells two topology classes
+    apart at a glance (a framework or layers; Pauling's sharing)."""
+    from . import bond_graph as bg
+
+    if structure is None:
+        return None
+    cut, _ = bg.pair_cutoffs(config, set(structure["species"]))
+    if not cut:
+        return None
+    cations = {e for e, q in (config.get("ionic_charges") or {}).items() if q > 0}
+    g = bg.build_graph(bg.Crystal(structure["lattice_matrix"], structure["species"],
+                                  structure["frac_coords"]), cut, cations)
+    shared = Counter()
+    for c in bg.linkage(g).values():
+        shared.update(c)
+    n = max(sum(1 for s in structure["species"] if s in cations), 1)
+    return (bg.dimensionality(g), shared[1] / n, shared[2] / n,
+            sum(v for k, v in shared.items() if k >= 3) / n)
 
 
 def merge_same_topology(entries: list, params_of, config_of) -> list:

@@ -196,3 +196,33 @@ def test_compare_rejects_a_record_of_another_reference(tmp_path):
     with pytest.raises(SystemExit):
         main(["compare", f"{FIX}/quartz_sio2.yaml", f"{REF}/quartz_sg152.cif",
               f"{FIX}/impostors/corundum_al2o3_round4_volume.json"])
+
+
+@pytest.mark.parametrize("name,lat,species,frac,cut,dim", [
+    # rock salt: a framework
+    ("rock salt", np.eye(3) * 5.64, ["Na"] * 4 + ["Cl"] * 4,
+     [[0, 0, 0], [0, .5, .5], [.5, 0, .5], [.5, .5, 0],
+      [.5, 0, 0], [0, .5, 0], [0, 0, .5], [.5, .5, .5]], 3.0, 3),
+    # a square net of one species 2.5 A apart, layers 10 A apart
+    ("square net", np.diag([2.5, 2.5, 10.0]), ["Si"], [[0, 0, 0]], 2.6, 2),
+    # a straight chain along a, 2.5 A spacing, 10 A apart sideways
+    ("chain", np.diag([2.5, 10.0, 10.0]), ["Si"], [[0, 0, 0]], 2.6, 1),
+    # an isolated dimer in a large cell
+    ("dimer", np.eye(3) * 10.0, ["Si", "Si"], [[0, 0, 0], [0.23, 0, 0]], 2.6, 0),
+])
+def test_dimensionality_of_textbook_nets(name, lat, species, frac, cut, dim):
+    crystal = bg.Crystal(lat, species, np.array(frac, float))
+    pairs = {frozenset((a, b)): cut for a in set(species) for b in set(species)}
+    assert bg.dimensionality(bg.build_graph(crystal, pairs)) == dim
+
+
+def test_class_descriptors_of_rock_salt():
+    """Each NaCl6 octahedron shares an edge with its 12 nearest Na
+    octahedra and a corner with the 6 along the cell axes: a framework."""
+    from mizuho.pipeline import class_descriptors
+    c = _rock_salt()
+    st = {"lattice_matrix": c.lattice, "species": c.species, "frac_coords": c.frac}
+    cfg = {"ionic_charges": {"Na": 1, "Cl": -1},
+           "bond_constraints": [{"atom1": "Na", "atom2": "Cl", "distance_min": 2.7,
+                                 "distance_max": 2.9, "cutoff": 3.4}]}
+    assert class_descriptors(st, cfg) == (3, 6.0, 12.0, 0.0)

@@ -76,3 +76,38 @@ is first, tetragonal tetrahedral nets (137, 136, 131) follow, wurtzite is 8th.
 
 So first-shell constraints and a density narrow each compound to a handful of zero-error
 topology classes that contain the published one; they do not rank it first.
+
+## The zero-error classes are distinct structures (design review 2026-10-21/22)
+
+The intent is to find every structure with the stated bonding, metastable ones included: anatase's
+fixture ranking rutile's class first, with anatase's present, is a working search, not a failure.
+What matters is whether the classes are different structures or one structure counted several
+times. The key (`bond_graph.topology`) is element plus coordination sequence to 10 shells per atom,
+ratios reduced by their gcd, plus corner/edge/face sharing per atom: independent of the cell and the
+setting a structure is written in.
+
+- 206 rutile-run, 187 anatase-run and 330 ZnO zero-error entries fall into 11, 9 and 14 classes
+  (11 for TiO2 over both runs). Unbonded stackings merge as they should: P-3m1 and P6_3/mmc
+  stackings of the same edge-sharing octahedral layers are one class.
+- Classes part at the second to fourth shell: cut at the first shell, TiO2's 11 become 5, ZnO's 14
+  become 2. They are different ways of linking the same polyhedra.
+- Known structures among them: rutile, anatase, TiO2-II (alpha-PbO2 type; a structure built from
+  literature coordinates, Pbcn, a 4.531 b 5.498 c 4.900 A, Ti 4c y 0.171, O 8d
+  (0.286, 0.376, 0.412), has exactly this class's key; coordinates from memory, the identification
+  rests on the key), CdI2-like layers; zinc blende, wurtzite.
+- Periodicity of the bonded net (`bond_graph.dimensionality`): TiO2 has one 2-D class (the layers,
+  142 entries) and ten frameworks; ZnO has nine frameworks, four layer classes and one chain class
+  (135 of 330 entries are not frameworks).
+- Atoms in the primitive cell help but do not decide: four TiO2 classes have 6 atoms (layers,
+  anatase, rutile, I4_1md), five ZnO classes have 4.
+
+`scripts/export_classes.py` writes one representative per class (highest detected point group,
+then lowest error), reduced to the primitive cell and idealised at 1e-3 A: a POSCAR of the
+primitive cell, and a CIF in the detected space group (spglib's standard setting, operations
+written out, one atom per Wyckoff orbit), read back and checked for the same group, density and
+topology. `run`'s global ranking now shows each class's dimensionality and corner/edge/face sharing
+per cation.
+
+**The known-answer test passes when the published structure is among the zero-error classes**
+(`--top 20`, every returned structure at or below 1e-3, detected symmetry), not only when it ranks
+first: other polymorphs with the same bonding are legitimate answers.

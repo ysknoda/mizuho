@@ -213,6 +213,32 @@ def linkage(graph: BondGraph) -> dict:
     return out
 
 
+def dimensionality(graph: BondGraph) -> int:
+    """Periodicity of the bonded net, 0-3: 3 for a framework, 2 for layers,
+    1 for chains, 0 for finite clusters. Breadth-first over the atoms of the
+    cell, carrying each atom's lattice offset; reaching an atom again at
+    another offset closes a cycle through the lattice, and the rank of all
+    such offsets is the dimensionality (the largest over disconnected parts
+    taken together, which is what a stack of unbonded layers needs)."""
+    offset = {}
+    cycles = []
+    for start in range(len(graph.adjacency)):
+        if start in offset:
+            continue
+        offset[start] = np.zeros(3, int)
+        stack = [start]
+        while stack:
+            a = stack.pop()
+            for b, t, _ in graph.adjacency[a]:
+                o = offset[a] + np.asarray(t)
+                if b not in offset:
+                    offset[b] = o
+                    stack.append(b)
+                elif (o != offset[b]).any():
+                    cycles.append(o - offset[b])
+    return int(np.linalg.matrix_rank(np.array(cycles))) if cycles else 0
+
+
 @dataclass
 class Topology:
     types: list  # per atom: topological type key (element, CS)
