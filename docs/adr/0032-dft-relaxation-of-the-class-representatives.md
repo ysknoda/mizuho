@@ -34,7 +34,7 @@ Energies per atom, TiO2 relative to anatase, ZnO to wurtzite.
 | 6 (Pnma) | +55 | minimum |
 | 5 (P-31m) | +82 | minimum |
 | 4 (P-3m1) | +102 | saddle (-7.8); distorts to P1, same topology |
-| 10 (P6_4) | <= +143 | saddle (<= -55); not converged in 200 + 200 steps |
+| 10 (P6_4) | +141 | saddle (-56); converged after continuing (continue.py) to a P1 structure (Pm at 0.1 A), topology changed |
 | 1 layers (P6_3/mmc) | +154 | minimum |
 | 9 (P4_122) | +216 | minimum, after its topology changed in the symmetry-kept relaxation |
 | 11 (P312) | +229 | minimum |
@@ -53,13 +53,20 @@ Energies per atom, TiO2 relative to anatase, ZnO to wurtzite.
 | 5 (P4_2/mmc) | +175 | minimum |
 | 4 (P4_2/mmc) | +315 | minimum |
 | 2 layers (P4_2/nmc) | +393 | minimum (-0.39) |
-| 6 chains (P4_2/mmc) | +489 | ambiguous: coarse rattle stopped 0.3 below; the first, full-setting rattle fell >= 248 and did not converge |
+| 6 chains (P4_2/mmc) | +488 | minimum (-0.47, same rattle rerun at the agreed settings); see below |
 
 - TiO2's 11 classes give 10 DFT structures, ZnO's 14 give 11. Every pair left distinct differs by
   more than 1 meV/atom (closest: ZnO 10 and 11, 1.1, with different keys and groups). The three
   merges are saddles relaxing onto another class (TiO2 8 to rutile, ZnO 7 to wurtzite, ZnO 9 to
   13).
-- Classes that are DFT minima in their own topology: 7 of 11 TiO2, 9 of 14 ZnO (ZnO 6 counted).
+- Classes that are DFT minima in their own topology: 7 of 11 TiO2, 9 of 14 ZnO.
+- ZnO class 6: the first full-setting rattle seemed to fall >= 248 meV/atom, but its chunk
+  energies read -34.92 for eight chunks, then -42.19 (about -900 meV/atom), -37.15, -34.93 and a
+  slow slide to -36.90. A chunk restarts from its predecessor's lowest step, so the rise after
+  -42.19 shows that step was a numerical artefact of a strongly deformed cell (the Pulay collapse
+  `runs/dft_basin` met in forsterite), not a lower structure. The same start rerun (6 ranks)
+  converged at -0.47 meV/atom below relax2. Its files were overwritten when the rattle was split;
+  the reading rests on the ledger's energies.
 - Every published anchor and its class agree to 0.02 meV/atom: the search's squeezed or stretched
   cells relax to the published structures.
 - PBEsol puts anatase 19 meV/atom below rutile, the known ordering error of GGA functionals for
@@ -70,4 +77,4 @@ Energies per atom, TiO2 relative to anatase, ZnO to wurtzite.
 
 - A zero-error class is a candidate, not a minimum: about a third of them are saddles or change
   their bonding on relaxation. A DFT relaxation with a symmetry-free stage is the check.
-- Open: TiO2 class 10 and ZnO class 6 are not converged to a final structure.
+- Every class has a converged final structure (TiO2 class 10 after a 400-step continuation).
