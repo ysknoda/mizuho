@@ -108,21 +108,21 @@ def _symop(rot, trans):
     return ",".join(out)
 
 
-def write_cif(path, title, lat_p, frac_p, species_p):
+def write_cif(path, title, lat_p, frac_p, species_p, symprec=SUCCESS_TOLERANCE):
     """CIF in the detected space group: spglib's standard conventional cell
     (ITA standard setting), the symmetry operations written out, and one
     atom per Wyckoff orbit with its letter and multiplicity."""
     nums = [Z[s] for s in species_p]
-    prim = spglib.get_symmetry_dataset((lat_p, frac_p, nums), symprec=SUCCESS_TOLERANCE)
+    prim = spglib.get_symmetry_dataset((lat_p, frac_p, nums), symprec=symprec)
     std = (prim.std_lattice, prim.std_positions, prim.std_types)
-    ds = spglib.get_symmetry_dataset(std, symprec=SUCCESS_TOLERANCE)
+    ds = spglib.get_symmetry_dataset(std, symprec=symprec)
     lat, pos, types = std
     a, b, c = np.linalg.norm(lat, axis=1)
     ang = lambda u, v: np.degrees(np.arccos(np.dot(u, v) / np.linalg.norm(u) / np.linalg.norm(v)))
     species = [SYMBOLS[t - 1] for t in types]
     counts = Counter(species)
     ops = list(dict.fromkeys(_symop(r, t) for r, t in zip(ds.rotations, ds.translations)))
-    lines = [f"# {title}", f"# idealised by spglib at {SUCCESS_TOLERANCE} A; standard conventional cell",
+    lines = [f"# {title}", f"# idealised by spglib at {symprec} A; standard conventional cell",
              "data_" + title.split()[0],
              f"_chemical_formula_sum '{' '.join(f'{e}{n}' for e, n in counts.items())}'",
              f"_space_group_name_H-M_alt '{ds.international}'",
@@ -149,18 +149,18 @@ def write_cif(path, title, lat_p, frac_p, species_p):
     Path(path).write_text("\n".join(lines) + "\n")
 
 
-def check_cif(path, lat_p, frac_p, species_p, config, key):
+def check_cif(path, lat_p, frac_p, species_p, config, key, symprec=SUCCESS_TOLERANCE, density_tol=1e-6):
     """Read the CIF back (mizuho's reader expands the operations) and
     require the same space group, composition per cell volume and topology."""
     from mizuho.io.cif import read_cif
     lat, frac, species = read_cif(path).expand()
-    sg = spglib.get_symmetry_dataset((lat, frac, [Z[s] for s in species]), symprec=SUCCESS_TOLERANCE).number
+    sg = spglib.get_symmetry_dataset((lat, frac, [Z[s] for s in species]), symprec=symprec).number
     sg_p = spglib.get_symmetry_dataset((lat_p, frac_p, [Z[s] for s in species_p]),
-                                       symprec=SUCCESS_TOLERANCE).number
+                                       symprec=symprec).number
     dens = len(species) / abs(np.linalg.det(lat))
     dens_p = len(species_p) / abs(np.linalg.det(lat_p))
     same_topo = repr(bg.topology(graph_of(lat, species, frac, config)).signature) == key
-    if sg != sg_p or abs(dens / dens_p - 1) > 1e-6 or not same_topo:
+    if sg != sg_p or abs(dens / dens_p - 1) > density_tol or not same_topo:
         raise SystemExit(f"{path}: CIF read-back differs (SG {sg} vs {sg_p}, "
                          f"density ratio {dens / dens_p:.6f}, topology same: {same_topo})")
     return len(species)
