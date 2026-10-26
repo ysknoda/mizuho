@@ -33,7 +33,7 @@ class AssignmentProblem:
     from the user config so strategies don't each re-implement the
     ionic/zero-charge mode decision and pruning parameters."""
     sg:                int
-    composition:       Dict[str, int]
+    composition:       Optional[Dict[str, int]]
     elements:          List[str]
     wu_entries:        List[WyckoffEntry]
     ionic_q:           Dict[str, float]
@@ -58,8 +58,27 @@ class AssignmentProblem:
     # letter_feasibility parameter).
     letter_feasibility: Optional[Dict[Tuple[str, str], float]] = None
 
+    # Composition-free search (ADR-0033): `composition` is None and the
+    # composition is an output of each accepted leaf instead of an input.
+    require_all_elements: bool = True
+
+    @property
+    def composition_free(self) -> bool:
+        return self.composition is None
+
+    @property
+    def exclude_fixed_overlap(self) -> bool:
+        """Whether a zero-free-parameter orbit may be reserved at most once
+        per concrete letter (see _fixed_representative_counts). Always on
+        in the composition-free search, where two orbits on one fixed
+        point are two atoms on top of each other and the search space is
+        large enough for the waste to matter (ADR-0033)."""
+        return self.composition_free or (self.zero_charge_mode and not self.allow_dup_wyckoff)
+
     @classmethod
     def from_config(cls, config: dict) -> "AssignmentProblem":
+        if config.get("composition") is None and config.get("elements"):
+            return cls._composition_free_from_config(config)
         sg          = config["spacegroup"]
         ionic_q     = config.get("ionic_charges", {})
         composition = parse_composition(config["composition"])
@@ -94,6 +113,54 @@ class AssignmentProblem:
             max_formula_units=max_formula_units,
             max_atoms_per_fu=max_atoms_per_fu,
             max_q_per_atom=max_q_per_atom,
+        )
+
+    @classmethod
+    def _composition_free_from_config(cls, config: dict) -> "AssignmentProblem":
+        """The composition-free problem (ADR-0033): `elements` instead of a
+        composition, accepted leaves are the charge-neutral ones, and the
+        cell is bounded by `tree_search.max_atoms` atoms in the PRIMITIVE
+        cell (a Wyckoff multiplicity counts the conventional cell, so the
+        bound is scaled by the space group's centring factor)."""
+        from ..symmetry import centring_factor
+
+        sg       = config["spacegroup"]
+        ionic_q  = config.get("ionic_charges", {})
+        elements = list(config["elements"])
+        ts_cfg   = config.get("tree_search", {})
+        if len(set(elements)) != len(elements):
+            raise ValueError(f"elements lists an element twice: {elements}")
+        if any(ionic_q.get(e, 0) == 0 for e in elements):
+            raise ValueError(
+                "a composition-free search needs a non-zero ionic charge for every "
+                f"element (ionic_charges {ionic_q}, elements {elements}): charge "
+                "neutrality is what selects its compositions (ADR-0033)")
+        if not any(ionic_q[e] > 0 for e in elements) or not any(ionic_q[e] < 0 for e in elements):
+            raise ValueError("a composition-free search needs a cation and an anion")
+        max_atoms = ts_cfg.get("max_atoms")
+        if not isinstance(max_atoms, int) or max_atoms < 1:
+            raise ValueError(
+                "a composition-free search needs tree_search.max_atoms, the atom "
+                "count bound of the primitive cell (ADR-0033)")
+        for key in ("max_formula_units", "max_atoms_per_fu"):
+            if key in ts_cfg:
+                raise ValueError(f"tree_search.{key} does not apply without a "
+                                 "composition; tree_search.max_atoms bounds the cell")
+        return cls(
+            sg=sg,
+            composition=None,
+            elements=elements,
+            wu_entries=WYCKOFF_DB.get(sg, []),
+            ionic_q=ionic_q,
+            zero_charge_mode=False,
+            allow_dup_wyckoff=False,
+            tol_min=config.get("charge_tolerance_min", 0),
+            tol_max=config.get("charge_tolerance_max", 0),
+            max_sites=ts_cfg.get("max_sites", 6),
+            max_formula_units=0,
+            max_atoms_per_fu=max_atoms * centring_factor(sg),
+            max_q_per_atom=max(abs(ionic_q[e]) for e in elements),
+            require_all_elements=ts_cfg.get("require_all_elements", True),
         )
 
 
@@ -213,6 +280,75 @@ def _is_complete(assigned: Dict[str, int], target: Dict[str, int]) -> bool:
     if abs(r0 - round(r0)) > 0.01:
         return False
     return all(abs(r - r0) < 0.01 for r in ratios)
+
+
+def _room_for(problem: AssignmentProblem, assigned_counts: Dict[str, int],
+              elem: str) -> bool:
+    """Whether `elem` may receive another site. Without a composition
+    (ADR-0033) only the atom and site bounds limit an element."""
+    if problem.composition_free:
+        return True
+    return assigned_counts[elem] < problem.composition[elem] * problem.max_formula_units
+
+
+def _counts_admissible(problem: AssignmentProblem, new_counts: Dict[str, int],
+                       elem: str) -> bool:
+    """Whether the counts after adding a site to `elem` can still complete
+    the target composition; always true without one (ADR-0033)."""
+    if problem.composition_free:
+        return True
+    too_many = any(
+        new_counts.get(e2, 0) >
+        problem.composition.get(e2, 1) * problem.max_formula_units + 0.01
+        for e2 in new_counts)
+    if too_many:
+        return False
+    return _ratio_consistent(new_counts, problem.composition, problem.elements, elem)
+
+
+def _leaf_status(problem: AssignmentProblem, new_counts: Dict[str, int],
+                 new_charge: float) -> Tuple[bool, bool]:
+    """(accepted, stop): whether the node is a valid assignment, and whether
+    the search stops expanding it.
+
+    With a composition, a node whose counts are a whole multiple of it is a
+    leaf either way. Without one (ADR-0033) a node is accepted when it is
+    charge-neutral within the tolerance and holds every element (unless
+    `tree_search.require_all_elements` is false), and it is expanded
+    further regardless: a neutral cell plus more sites can be neutral
+    again, a larger cell of another composition or of the same one."""
+    if problem.composition_free:
+        present = (all(new_counts.get(e, 0) > 0 for e in problem.elements)
+                   if problem.require_all_elements else bool(new_counts))
+        return present and problem.tol_min <= new_charge <= problem.tol_max, False
+    if not _is_complete(new_counts, problem.composition):
+        return False, False
+    if problem.zero_charge_mode:
+        return True, True
+    return problem.tol_min <= new_charge <= problem.tol_max, True
+
+
+def has_fixed_overlap(assignment: List[SiteAssignment]) -> bool:
+    """Whether two sites occupy the same zero-free-parameter Wyckoff letter,
+    i.e. the same fixed points: two atoms on top of each other."""
+    fixed = [a.entry.letter for a in assignment if not a.entry.free_params]
+    return len(fixed) != len(set(fixed))
+
+
+def reduced_formula(assignment: List[SiteAssignment], elements: List[str]) -> str:
+    """The assignment's composition reduced by the greatest common divisor
+    of its atom counts, in `elements` order with counts of 1 omitted:
+    Al3O3N, not N1O3Al3 (ADR-0033)."""
+    from math import gcd
+
+    counts: Dict[str, int] = {}
+    for a in assignment:
+        counts[a.element] = counts.get(a.element, 0) + a.entry.multiplicity
+    g = 0
+    for n in counts.values():
+        g = gcd(g, n)
+    return "".join(f"{e}{'' if counts[e] // g == 1 else counts[e] // g}"
+                   for e in elements if counts.get(e))
 
 
 def _canonical_label(assignments: List[SiteAssignment]) -> str:

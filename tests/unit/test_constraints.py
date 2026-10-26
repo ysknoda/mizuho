@@ -151,3 +151,32 @@ def test_ideal_bond_config_shrinks_only_derived_bands():
     assert ideal["Mg"]["distance_min"] == ideal["Mg"]["distance_max"] == mg["distance_ideal"]
     assert (ideal["Si"]["distance_min"], ideal["Si"]["distance_max"]) == (1.6, 1.65)
     assert ideal_bond_config({"bond_constraints": [stated]}) is None
+
+
+def _alon(**extra):
+    cfg = {"composition": "Al3O3N", "ionic_charges": {"Al": 3, "O": -2, "N": -3},
+           "coordination_numbers": {"Al": [4, 6]}}
+    cfg.update(extra)
+    return cfg
+
+
+def _anion_cn(out):
+    return {c["center_atom"]: (c["cn_min"], c["cn_max"], c["cutoff_distance"])
+            for c in out["coordination_constraints"] if c["center_atom"] in ("O", "N")}
+
+
+def test_anion_coordination_numbers_split_the_combined_range():
+    """ADR-0033: the mean m fixes only the anions' combined count (Al3O3N
+    at Al CN 4-6: m = 3-4.5, so [3, 5] for both); the stated ranges replace
+    it per anion, at the derived cutoffs."""
+    plain = _anion_cn(derive_constraints(_alon()))
+    assert plain["O"][:2] == plain["N"][:2] == (3, 5)
+    split = _anion_cn(derive_constraints(_alon(
+        anion_coordination_numbers={"O": [2, 4], "N": [3, 4]})))
+    assert split["O"][:2] == (2, 4) and split["N"][:2] == (3, 4)
+    assert split["O"][2] == plain["O"][2] and split["N"][2] == plain["N"][2]
+
+
+def test_anion_coordination_numbers_names_anions_only():
+    with pytest.raises(ValueError, match="not anions"):
+        derive_constraints(_alon(anion_coordination_numbers={"Al": 4}))

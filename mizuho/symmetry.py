@@ -16,8 +16,8 @@ recovers the declared group removes that rounding before the structure is
 used.
 """
 
-from collections.abc import Sequence
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cache
 from itertools import product
@@ -75,7 +75,9 @@ def _dataset(cell, symprec: float, hall_number: int = 0):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         try:
-            return spglib.get_symmetry_dataset(cell, symprec=symprec, hall_number=hall_number)
+            return spglib.get_symmetry_dataset(
+                cell, symprec=symprec, hall_number=hall_number
+            )
         except spglib.error.SpglibError:
             return None
 
@@ -94,9 +96,15 @@ def point_group_order(sg: int) -> int:
     return len({tuple(np.rint(r).astype(int).ravel()) for r in rot})
 
 
-def detect_spacegroup(
-    lattice, frac, species, symprec: float
-) -> tuple[int, str] | None:
+def centring_factor(sg: int) -> int:
+    """Lattice points per conventional cell: 1 for P, 2 for A/B/C/I, 3 for
+    R in hexagonal axes, 4 for F. A Wyckoff multiplicity divided by it is
+    the atom count in the primitive cell (ADR-0033)."""
+    rot, _ = get_ops(sg)
+    return len(rot) // point_group_order(sg)
+
+
+def detect_spacegroup(lattice, frac, species, symprec: float) -> tuple[int, str] | None:
     """(number, international symbol) spglib detects at `symprec` A, or
     None if it finds no symmetry at all (degenerate input)."""
     cell, _ = _spglib_cell(lattice, frac, species)

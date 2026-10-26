@@ -212,7 +212,8 @@ commonly used top-level keys are:
 
 | Key | Purpose |
 |---|---|
-| `composition` | Target chemical formula, e.g. `"BaTiO3"` |
+| `composition` | Target chemical formula, e.g. `"BaTiO3"`; omit it and give `elements` for the composition-free search |
+| `elements` | Elements of a composition-free search, e.g. `[Al, O, N]`: the charge-neutral compositions come out of the search ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `spacegroup` | Space-group number (1-230); required unless `mode: auto_spacegroup` |
 | `mode` | `auto_spacegroup` opts in to the experimental automatic search (mode B, `spacegroup` omitted); `single_spacegroup` is an optional spelling of mode A |
 | `ionic_charges` | `{element: charge}` for ionic-mode searches |
@@ -220,11 +221,29 @@ commonly used top-level keys are:
 | `bond_constraints` | List of `{atom1, atom2, distance_min, distance_max, weight}` |
 | `angle_constraints` | List of `{atom_center, atom_neighbor, angle_min, angle_max, weight, exclude_neighbor_pairs}` |
 | `coordination_constraints` | List of `{center_atom, neighbor_atom, cn_min, cn_max, cutoff_distance}` |
-| `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle |
+| `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle. Without a composition: `max_atoms` (atoms per primitive cell, replaces `max_formula_units`), `require_all_elements` (default `true`), and `max_candidates` caps each (space group, composition) |
 | `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening, `strategy: exhaustive` (optional `spacegroups`, and `record: file.jsonl` to record each group and resume) for all 230 groups |
 | `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ...; `topology_grouping` (see below) |
-| `auto_composition` | Set `true` for fully automatic composition + structure discovery |
 | `composition_pool` | List of composition strings to search over |
+
+### Composition-free search
+
+Omit `composition` and name the elements; the Wyckoff tree search accepts every charge-neutral
+assignment that holds all of them within `tree_search.max_atoms` atoms per primitive cell, and
+each assignment's reduced formula is its composition ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)).
+Phase 2 keeps `max_candidates` per (space group, composition); `run` prints one ranking per
+composition and a composition summary.
+
+```yaml
+mode: auto_spacegroup
+elements: [Al, O, N]
+ionic_charges: {Al: 3, O: -2, N: -3}
+coordination_numbers: {Al: [4, 6]}
+anion_coordination_numbers: {O: [2, 4], N: [3, 4]}   # how the anions split the bonds
+density_g_cm3: [3.26, 4.10]
+tree_search: {max_atoms: 21, max_sites: 6}
+spacegroup_search: {strategy: exhaustive, record: alon.jsonl}
+```
 
 ### Neighbour/partner element specification (`atom2`, `neighbor_atom`, `atom_neighbor`)
 
@@ -257,6 +276,7 @@ bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every
 |---|---|---|
 | `coordination_numbers` | none | Cited CN per cation, an integer or `[min, max]`; turns derivation on |
 | `bonded_anions` | every anion | Per cation, the anions it bonds (a cited fact); the others are held outside its shell |
+| `anion_coordination_numbers` | [floor(m), ceil(m)] | Per anion, its CN over the framework cations, in place of the range the mean m gives all anions together ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
 | `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
 | `optimization.centring` | `true` | After Stage 2, move a zero-error point to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back |

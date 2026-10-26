@@ -23,9 +23,9 @@ from .lattice import CRYSTAL_SYSTEM_OF_SG, get_lattice_system
 from .optimize.driver import optimize_one_assignment
 from .optimize.endpoints import grouping_settings
 from .pipeline import (
-    _run_auto_composition_mode, _run_composition_pool, build_sg_config,
+    _run_composition_pool, build_sg_config,
     class_descriptors, merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
-    search_and_rank,
+    search_and_rank, search_and_rank_compositions,
 )
 from .search import auto_search_spacegroups
 from .normalizer import (
@@ -124,6 +124,7 @@ def _append_sg_record(path, sg: int, rows: list, seconds: float) -> None:
                                       structure["species"], SUCCESS_TOLERANCE)
             det = None if found is None else int(found[0])
         entries.append({
+            "composition": sg_config.get("composition"),
             "specs": [{"element": a.element, "letter": a.entry.letter} for a in asgn],
             "error": None if best_p is None else float(err),
             "params": None if best_p is None else [float(x) for x in best_p],
@@ -134,19 +135,34 @@ def _append_sg_record(path, sg: int, rows: list, seconds: float) -> None:
         fh.write(json.dumps({"sg": sg, "seconds": round(seconds, 1), "entries": entries}) + "\n")
 
 
-def _entries_from_record(sg: int, entries: list, sg_config: dict) -> list:
-    """`run` ranking entries rebuilt from a recorded group."""
+def _entries_from_record(sg: int, entries: list, sg_config, base_config: dict = None) -> list:
+    """`run` ranking entries rebuilt from a recorded group. An entry of a
+    composition-free run (ADR-0033) carries its composition and gets that
+    composition's config, built from `base_config`; `sg_config` may then be
+    None."""
     import numpy as np
+
+    built = {}
+
+    def config_of(e):
+        comp = e.get("composition")
+        if base_config is None or comp is None or (
+                sg_config is not None and comp == sg_config.get("composition")):
+            return sg_config
+        if comp not in built:
+            built[comp] = build_sg_config(base_config, sg, composition=comp)
+        return built[comp]
 
     rows = []
     for e in entries:
         asgn = resolve_fixed_assignment(sg, e["specs"])
+        cfg_e = config_of(e)
         if e["params"] is None:
-            rows.append((1e10, sg, asgn, None, None, sg_config))
+            rows.append((1e10, sg, asgn, None, None, cfg_e))
             continue
         p = np.array(e["params"])
-        cfg = dict(sg_config, wyckoff_sites=assignments_to_sites(asgn))
-        rows.append((e["error"], sg, asgn, p, build_structure(p, cfg), sg_config))
+        cfg = dict(cfg_e, wyckoff_sites=assignments_to_sites(asgn))
+        rows.append((e["error"], sg, asgn, p, build_structure(p, cfg), cfg_e))
     return rows
 
 
@@ -203,8 +219,8 @@ def _cmd_run(args) -> None:
 
     # A single injection point here propagates --seed to every downstream
     # consumer of config["optimization"]["seed"] (Phase 0 Stage 0-C,
-    # Phase 2 optimize_one_assignment, and the auto_composition /
-    # composition_pool drivers), because they all read that same nested
+    # Phase 2 optimize_one_assignment, and the composition_pool
+    # driver), because they all read that same nested
     # dict object via dict.get(..., default) rather than copies of it.
     if args.seed is not None:
         config.setdefault("optimization", {})["seed"] = args.seed
@@ -215,30 +231,40 @@ def _cmd_run(args) -> None:
     # Mode selection
     # ================================================================
     # Priority:
-    #   1. "auto_composition: true"  -> fully automatic: SG auto-search
-    #      + composition auto-discovery from Wyckoff multiplicities
-    #   2. "composition_pool": [...]  -> user-supplied pool (legacy)
-    #   3. "composition": "..."       -> single composition (original)
+    #   1. "composition_pool": [...]  -> user-supplied pool (legacy)
+    #   2. "composition": "..."       -> single composition (original)
+    #   3. "elements": [...]          -> composition-free search: the
+    #      charge-neutral compositions are found by the tree search
+    #      itself (docs/adr/0033)
     # ================================================================
     _check_mode(config)
 
-    auto_comp = config.get("auto_composition", False)
     pool      = config.get("composition_pool")
-
-    if auto_comp:
-        _run_auto_composition_mode(config, args)
-        return
 
     if pool:
         _run_composition_pool(config, pool, args)
         return
 
     # ----------------------------------------------------------------
-    # Single-composition mode (original behaviour)
+    # One composition, or none: the composition-free search (ADR-0033)
+    # takes `elements` and finds the charge-neutral compositions itself.
     # ----------------------------------------------------------------
     opt_cfg   = config.get("optimization", {})
     ionic_q   = config.get("ionic_charges", {})
-    elements  = list(parse_composition(config["composition"]).keys())
+    comp_free = config.get("composition") is None
+    if comp_free and not config.get("elements"):
+        print("ERROR: state 'composition', or 'elements' for a composition-free "
+              "search (docs/adr/0033)."); sys.exit(1)
+    if not comp_free and config.get("elements"):
+        print("ERROR: state 'composition' or 'elements', not both."); sys.exit(1)
+    if comp_free:
+        from .search import AssignmentProblem
+        try:
+            AssignmentProblem.from_config(dict(config, spacegroup=1))
+        except ValueError as e:
+            print(f"ERROR: {e}"); sys.exit(1)
+    elements  = (list(config["elements"]) if comp_free
+                 else list(parse_composition(config["composition"]).keys()))
     ts_cfg    = config.get("tree_search", {})
     max_cands = ts_cfg.get("max_candidates", 50)
 
@@ -266,13 +292,19 @@ def _cmd_run(args) -> None:
     if fixed_wy is not None and auto_mode:
         print("ERROR: 'wyckoff_assignment' requires a fixed 'spacegroup' "
               "(it names Wyckoff letters of one specific space group)."); sys.exit(1)
+    if fixed_wy is not None and comp_free:
+        print("ERROR: 'wyckoff_assignment' requires a 'composition'."); sys.exit(1)
 
     # ----------------------------------------------------------------
     # Banner
     # ----------------------------------------------------------------
     print(f"\n{'='*65}")
     print(f"  Crystal Structure Predictor v6")
-    print(f"  Composition  : {config['composition']}")
+    if comp_free:
+        print(f"  Composition  : free over {elements}, at most "
+              f"{config['tree_search']['max_atoms']} atoms per primitive cell")
+    else:
+        print(f"  Composition  : {config['composition']}")
     if auto_mode:
         print(f"  Space group  : AUTO, experimental (Phase 0 screening active)")
     else:
@@ -337,8 +369,9 @@ def _cmd_run(args) -> None:
         print(f"\n  Resuming from {record}: {len(recorded)} group(s) already recorded.")
 
     for sg_idx, sg in enumerate(top_sgs):
-        # Build a per-SG config
-        sg_config = build_sg_config(config, sg)
+        # A per-SG config. Without a composition, each composition the
+        # search finds gets its own (search_and_rank_compositions).
+        sg_config = None if comp_free else build_sg_config(config, sg)
 
         if auto_mode:
             print(f"\n{'-'*65}")
@@ -347,7 +380,7 @@ def _cmd_run(args) -> None:
             print(f"{'-'*65}")
 
         if sg in recorded:
-            all_results.extend(_entries_from_record(sg, recorded[sg], sg_config))
+            all_results.extend(_entries_from_record(sg, recorded[sg], sg_config, config))
             print(f"  Recorded: {len(recorded[sg])} entry(ies), not re-run.")
             continue
         sg_started = time.time()
@@ -361,12 +394,17 @@ def _cmd_run(args) -> None:
             except ValueError as e:
                 print(f"ERROR: {e}"); sys.exit(1)
             _check_fixed_assignment_matches_composition(asgn, config["composition"])
-            valid_asgns = [asgn]
             # No ranking pass ran for a directly-fixed assignment, so
             # there is no already-solved shell to reuse --
             # optimize_one_assignment solves it fresh when needed.
-            shell_seeds = [None]
+            groups = [(config["composition"], sg_config, [asgn], 1, [None])]
             print(f"  Using 1 fixed assignment.")
+        elif comp_free:
+            print(f"\n[Phase 1] SG {sg} - composition-free Wyckoff assignment tree search ...")
+            groups = search_and_rank_compositions(config, sg, max_cands, verbose=args.verbose)
+            for comp, _, valid_asgns, n_found, _ in groups:
+                print(f"  {comp}: {n_found} charge-neutral assignment(s), "
+                      f"{len(valid_asgns)} to Phase 2.")
         else:
             # Phase 1: tree search (+ geometric-feasibility re-ranking)
             print(f"\n[Phase 1] SG {sg} - Wyckoff assignment tree search ...")
@@ -377,22 +415,27 @@ def _cmd_run(args) -> None:
                           if _all_charges_zero(ionic_q, elements)
                           else "charge-neutral")
             print(f"  Found {n_found} {mode_label} assignment(s).")
+            groups = [(config["composition"], sg_config, valid_asgns, n_found, shell_seeds)]
 
-            if not valid_asgns:
-                print(f"  Skipping SG {sg} (no valid assignments).")
-                if record:
-                    _append_sg_record(record, sg, [], time.time() - sg_started)
-                continue
+        if not any(valid_asgns for _, _, valid_asgns, _, _ in groups):
+            print(f"  Skipping SG {sg} (no valid assignments).")
+            if record:
+                _append_sg_record(record, sg, [], time.time() - sg_started)
+            continue
 
         # Phase 2: optimise each Wyckoff assignment; one entry per
         # topology class it reached, up to --top (ADR-0019)
-        for asgn, r in optimise_candidates(valid_asgns, sg_config, opt_cfg,
-                                           shell_seeds, args.verbose, args.top,
-                                           header=f"SG{sg} "):
-            if r is None:
-                all_results.append((1e10, sg, asgn, None, None, sg_config))
-            else:
-                all_results.append((r.error, sg, asgn, r.params, r.structure, sg_config))
+        for comp, comp_config, valid_asgns, _, shell_seeds in groups:
+            if not valid_asgns:
+                continue
+            header = f"SG{sg} {comp} " if comp_free else f"SG{sg} "
+            for asgn, r in optimise_candidates(valid_asgns, comp_config, opt_cfg,
+                                               shell_seeds, args.verbose, args.top,
+                                               header=header):
+                if r is None:
+                    all_results.append((1e10, sg, asgn, None, None, comp_config))
+                else:
+                    all_results.append((r.error, sg, asgn, r.params, r.structure, comp_config))
         if record:
             _append_sg_record(record, sg, all_results[n_before:], time.time() - sg_started)
 
@@ -423,56 +466,76 @@ def _cmd_run(args) -> None:
     # a structure and its distortions in subgroups all reach zero error,
     # and the highest group among them is the one ADR-0010 calls the answer.
     threshold = grouping_settings(opt_cfg).zero_error_threshold
-    all_results.sort(key=lambda x: _ranking_key(x[0], x[1], threshold))
-    # One row per bond-graph topology class: entries that reached the same
-    # class are one structure (ADR-0019); "Same" counts the merged ones.
-    ranked = merge_same_topology(all_results, lambda e: e[3], _run_entry_config)
+    # One ranking per composition (ADR-0033); a fixed-composition run has one.
+    by_comp = {}
+    for entry in all_results:
+        by_comp.setdefault(entry[5]["composition"], []).append(entry)
+    for rows in by_comp.values():
+        rows.sort(key=lambda x: _ranking_key(x[0], x[1], threshold))
+    comps = sorted(by_comp, key=lambda c: _ranking_key(by_comp[c][0][0], by_comp[c][0][1],
+                                                       threshold))
+    summary = []
+    for comp in comps:
+        # One row per bond-graph topology class: entries that reached the same
+        # class are one structure (ADR-0019); "Same" counts the merged ones.
+        ranked = merge_same_topology(by_comp[comp], lambda e: e[3], _run_entry_config)
+        summary.append((comp, len(by_comp[comp]),
+                        sum(1 for (e, _) in ranked if e[0] <= threshold), ranked[0][0]))
 
-    print(f"\n{'='*65}")
-    print("  GLOBAL RANKING")
-    print(f"{'='*65}")
-    # Dim: 3 framework, 2 layers, 1 chains, 0 clusters; c/e/f: corners,
-    # edges, faces each cation's polyhedron shares (Pauling's third rule).
-    print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
-          f"{'Crystal system':>14}  {'Same':>4}  {'Dim':>3}  {'c/e/f':>11}  Assignment")
-    print(f"  {'-'*90}")
-    for rank, ((err, sg, asgn, _, structure, sg_cfg), n_same) in enumerate(ranked, 1):
-        label = " + ".join(
-            f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
-            for a in asgn)
-        cs = CRYSTAL_SYSTEM_OF_SG.get(sg, "?")
-        desc = class_descriptors(structure, sg_cfg)
-        dim, cef = ("-", "-") if desc is None else (
-            str(desc[0]), "/".join(f"{x:.3g}" for x in desc[1:]))
-        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {cs:>14}  {n_same:>4}  {dim:>3}  {cef:>11}  {label}")
+        print(f"\n{'='*65}")
+        print(f"  RANKING  {comp}" if comp_free else "  GLOBAL RANKING")
+        print(f"{'='*65}")
+        # Dim: 3 framework, 2 layers, 1 chains, 0 clusters; c/e/f: corners,
+        # edges, faces each cation's polyhedron shares (Pauling's third rule).
+        print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
+              f"{'Crystal system':>14}  {'Same':>4}  {'Dim':>3}  {'c/e/f':>11}  Assignment")
+        print(f"  {'-'*90}")
+        for rank, ((err, sg, asgn, _, structure, sg_cfg), n_same) in enumerate(ranked, 1):
+            label = " + ".join(
+                f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
+                for a in asgn)
+            cs = CRYSTAL_SYSTEM_OF_SG.get(sg, "?")
+            desc = class_descriptors(structure, sg_cfg)
+            dim, cef = ("-", "-") if desc is None else (
+                str(desc[0]), "/".join(f"{x:.3g}" for x in desc[1:]))
+            print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {cs:>14}  {n_same:>4}  {dim:>3}  {cef:>11}  {label}")
 
-    # ----------------------------------------------------------------
-    # Output top-N structures
-    # ----------------------------------------------------------------
-    top_n = min(args.top, len(ranked))
-    comp  = config["composition"].replace(" ", "_")
+        # ------------------------------------------------------------
+        # Output top-N structures
+        # ------------------------------------------------------------
+        top_n = min(args.top, len(ranked))
+        safe = comp.replace(" ", "_")
 
-    for rank in range(top_n):
-        err, sg, asgn, best_p, structure, sg_config = ranked[rank][0]
-        if structure is None:
-            print(f"\n  [Rank {rank+1}] No valid structure obtained.")
-            continue
+        for rank in range(top_n):
+            err, sg, asgn, best_p, structure, sg_config = ranked[rank][0]
+            if structure is None:
+                print(f"\n  [Rank {rank+1}] No valid structure obtained.")
+                continue
 
-        win_cfg = dict(sg_config)
-        win_cfg["wyckoff_sites"] = assignments_to_sites(asgn)
+            win_cfg = dict(sg_config)
+            win_cfg["wyckoff_sites"] = assignments_to_sites(asgn)
 
-        print_summary(structure, asgn, win_cfg, err,
-                      param_vector=best_p)
-        print_diagnostics(structure, win_cfg, best_p, error_breakdown(best_p, win_cfg))
+            print_summary(structure, asgn, win_cfg, err,
+                          param_vector=best_p)
+            print_diagnostics(structure, win_cfg, best_p, error_breakdown(best_p, win_cfg))
 
-        ext = "cif" if args.format == "cif" else "vasp"
-        out_path = (args.output if args.output and top_n == 1
-                    else f"{comp}_rank{rank+1}.{ext}")
-        if args.format == "cif":
-            write_cif(best_p, win_cfg, out_path, title=f"{comp}_rank{rank+1}")
-            print(f"\n  CIF written: {out_path}")
-        else:
-            write_poscar(structure, win_cfg, out_path)
+            ext = "cif" if args.format == "cif" else "vasp"
+            out_path = (args.output if args.output and top_n == 1 and len(comps) == 1
+                        else f"{safe}_rank{rank+1}.{ext}")
+            if args.format == "cif":
+                write_cif(best_p, win_cfg, out_path, title=f"{safe}_rank{rank+1}")
+                print(f"\n  CIF written: {out_path}")
+            else:
+                write_poscar(structure, win_cfg, out_path)
+
+    if comp_free:
+        print(f"\n{'='*65}")
+        print("  COMPOSITIONS  (best entry first; classes at or below "
+              f"{threshold:g})")
+        print(f"{'='*65}")
+        print(f"  {'Composition':<16}  {'Entries':>7}  {'Classes':>7}  {'Best error':>12}  {'SG':>5}")
+        for comp, n, n_zero, (err, sg, *_rest) in summary:
+            print(f"  {comp:<16}  {n:>7}  {n_zero:>7}  {err:>12.5g}  {sg:>5}")
 
     print("\n  Done.\n")
 

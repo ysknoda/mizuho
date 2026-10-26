@@ -10,14 +10,25 @@ tests/unit/test_search_strategies.py.
 """
 
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
 
 from ..structure import SiteAssignment
-from .base import (AssignmentProblem, SearchBudget, SearchResult,
-                    SearchStrategy, TreeNode, _canonical_label,
-                    _fixed_representative_counts, _shape_group_sizes,
-                    _shape_key, canonical_representatives,
-                    expand_letter_choices, _is_complete, _ratio_consistent)
+from .base import (
+    AssignmentProblem,
+    SearchBudget,
+    SearchResult,
+    SearchStrategy,
+    TreeNode,
+    _canonical_label,
+    _fixed_representative_counts,
+    _counts_admissible,
+    _leaf_status,
+    _room_for,
+    _shape_group_sizes,
+    _shape_key,
+    canonical_representatives,
+    has_fixed_overlap,
+    expand_letter_choices,
+)
 
 
 class ExhaustiveDFSStrategy(SearchStrategy):
@@ -60,7 +71,7 @@ class ExhaustiveDFSStrategy(SearchStrategy):
     """
 
     def search(self, problem: AssignmentProblem, budget: SearchBudget) -> SearchResult:
-        valid_assignments: List[List[SiteAssignment]] = []
+        valid_assignments: list[list[SiteAssignment]] = []
         seen_labels: set = set()
         nodes_expanded = 0
         budget_exhausted = False
@@ -72,15 +83,19 @@ class ExhaustiveDFSStrategy(SearchStrategy):
         representatives = canonical_representatives(problem.wu_entries)
         shape_group_sizes = _shape_group_sizes(problem.wu_entries)
 
-        stack: List[TreeNode] = [TreeNode([], 0.0, 0)]
+        stack: list[TreeNode] = [TreeNode([], 0.0, 0)]
 
         while stack:
-            if (budget.max_candidates is not None
-                    and len(valid_assignments) >= budget.max_candidates):
+            if (
+                budget.max_candidates is not None
+                and len(valid_assignments) >= budget.max_candidates
+            ):
                 budget_exhausted = True
                 break
-            if (budget.max_nodes_expanded is not None
-                    and nodes_expanded >= budget.max_nodes_expanded):
+            if (
+                budget.max_nodes_expanded is not None
+                and nodes_expanded >= budget.max_nodes_expanded
+            ):
                 budget_exhausted = True
                 break
 
@@ -93,19 +108,18 @@ class ExhaustiveDFSStrategy(SearchStrategy):
             if node.total_atoms >= problem.max_atoms_per_fu:
                 continue
 
-            assigned_counts: Dict[str, int] = defaultdict(int)
+            assigned_counts: dict[str, int] = defaultdict(int)
             for a in node.assignments:
                 assigned_counts[a.element] += a.entry.multiplicity
 
-            fixed_rep_counts: Dict[str, int] = {}
-            if problem.zero_charge_mode and not problem.allow_dup_wyckoff:
+            fixed_rep_counts: dict[str, int] = {}
+            if problem.exclude_fixed_overlap:
                 fixed_rep_counts = _fixed_representative_counts(node.assignments)
 
             for elem in problem.elements:
                 if budget_exhausted:
                     break
-                if (assigned_counts[elem]
-                        >= problem.composition[elem] * problem.max_formula_units):
+                if not _room_for(problem, assigned_counts, elem):
                     continue
 
                 q_elem = problem.ionic_q.get(elem, 0)
@@ -113,10 +127,12 @@ class ExhaustiveDFSStrategy(SearchStrategy):
                 for wentry in representatives:
                     mult = wentry.multiplicity
 
-                    if (problem.zero_charge_mode and not problem.allow_dup_wyckoff
-                            and not wentry.free_params
-                            and fixed_rep_counts.get(wentry.letter, 0)
-                                >= shape_group_sizes[_shape_key(wentry)]):
+                    if (
+                        problem.exclude_fixed_overlap
+                        and not wentry.free_params
+                        and fixed_rep_counts.get(wentry.letter, 0)
+                        >= shape_group_sizes[_shape_key(wentry)]
+                    ):
                         continue
 
                     new_atoms = node.total_atoms + mult
@@ -128,36 +144,25 @@ class ExhaustiveDFSStrategy(SearchStrategy):
                     new_counts = dict(assigned_counts)
                     new_counts[elem] = new_counts.get(elem, 0) + mult
 
-                    too_many = any(
-                        new_counts.get(e2, 0) >
-                        problem.composition.get(e2, 1) * problem.max_formula_units + 0.01
-                        for e2 in new_counts)
-                    if too_many:
-                        continue
-
-                    if not _ratio_consistent(new_counts, problem.composition,
-                                              problem.elements, elem):
+                    if not _counts_admissible(problem, new_counts, elem):
                         continue
 
                     new_assignments = node.assignments + [SiteAssignment(elem, wentry)]
                     new_node = TreeNode(new_assignments, new_charge, new_atoms)
 
-                    complete = _is_complete(new_counts, problem.composition)
-                    if complete:
-                        if problem.zero_charge_mode:
-                            accepted = True
-                        else:
-                            accepted = problem.tol_min <= new_charge <= problem.tol_max
-
-                        if accepted:
-                            canon = _canonical_label(new_assignments)
-                            if canon not in seen_labels:
-                                seen_labels.add(canon)
-                                valid_assignments.append(new_assignments)
-                                if (budget.max_candidates is not None
-                                        and len(valid_assignments) >= budget.max_candidates):
-                                    budget_exhausted = True
-                                    break
+                    accepted, stop = _leaf_status(problem, new_counts, new_charge)
+                    if accepted:
+                        canon = _canonical_label(new_assignments)
+                        if canon not in seen_labels:
+                            seen_labels.add(canon)
+                            valid_assignments.append(new_assignments)
+                            if (
+                                budget.max_candidates is not None
+                                and len(valid_assignments) >= budget.max_candidates
+                            ):
+                                budget_exhausted = True
+                                break
+                    if stop:
                         continue
 
                     if not problem.zero_charge_mode:
@@ -170,14 +175,17 @@ class ExhaustiveDFSStrategy(SearchStrategy):
 
                     stack.append(new_node)
 
-        return SearchResult(accepted=valid_assignments, nodes_expanded=nodes_expanded,
-                            budget_exhausted=budget_exhausted)
+        return SearchResult(
+            accepted=valid_assignments,
+            nodes_expanded=nodes_expanded,
+            budget_exhausted=budget_exhausted,
+        )
 
 
 def wyckoff_tree_search(
-        config: dict,
-        letter_feasibility: Optional[Dict[Tuple[str, str], float]] = None,
-) -> List[List[SiteAssignment]]:
+    config: dict,
+    letter_feasibility: dict[tuple[str, str], float] | None = None,
+) -> list[list[SiteAssignment]]:
     """
     Enumerate valid Wyckoff site assignments for the given composition
     and space group. Dispatches to BestFirstBranchAndBoundStrategy by
@@ -219,18 +227,24 @@ def wyckoff_tree_search(
     ts_cfg = config.get("tree_search", {})
     strategy_name = ts_cfg.get("strategy", "best_first")
     strategy: SearchStrategy = (
-        ExhaustiveDFSStrategy() if strategy_name == "exhaustive"
-        else BestFirstBranchAndBoundStrategy())
+        ExhaustiveDFSStrategy()
+        if strategy_name == "exhaustive"
+        else BestFirstBranchAndBoundStrategy()
+    )
 
     problem = AssignmentProblem.from_config(config)
     problem.letter_feasibility = letter_feasibility
     budget = SearchBudget.from_config(config)
     result = strategy.search(problem, budget)
 
-    expanded: List[List[SiteAssignment]] = []
+    expanded: list[list[SiteAssignment]] = []
     seen_labels: set = set()
     for asgn in result.accepted:
         for concrete in expand_letter_choices(asgn, problem.wu_entries):
+            # Two sites on one fixed point are two atoms on top of each
+            # other; dropped in the composition-free search (ADR-0033).
+            if problem.composition_free and has_fixed_overlap(concrete):
+                continue
             canon = _canonical_label(concrete)
             if canon not in seen_labels:
                 seen_labels.add(canon)

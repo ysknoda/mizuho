@@ -28,6 +28,12 @@ def reject_removed_keys(config: dict) -> None:
             "config key 'normalize_penalties' was removed: penalty "
             "normalisation is always on (docs/adr/0009-always-normalise-"
             "penalties.md). Delete the key from the config.")
+    for key in ("auto_composition", "auto_composition_settings"):
+        if key in config:
+            raise ValueError(
+                f"config key {key!r} was removed: omit 'composition' and state "
+                "'elements' and tree_search.max_atoms for the composition-free "
+                "search (docs/adr/0033-composition-free-wyckoff-search.md).")
 
 
 def _penalty(v, vmin, vmax, w=1.0, scale=1.0) -> float:

@@ -30,6 +30,12 @@ structure used to supply is derived from that:
   (CN 0), and the anion CN and polymerisation ranges are counted over the
   anions the cations actually bond. Without it a cation bonds every anion.
 
+- Optionally, `anion_coordination_numbers: {O: [2, 4], N: [3, 4]}` states an
+  anion's CN over the framework cations (a cited or chosen fact), in place
+  of the [floor(m), ceil(m)] range above, at the same derived cutoff. With
+  several anions the mean m fixes only their combined count; this states
+  how it splits between them (ADR-0033).
+
 - With H at CN 1, an X-H...X angle band: any anion within
   HBOND_ACCEPTOR_RANGE of H (a moderate or strong hydrogen bond's acceptor)
   sits at HBOND_MIN_ANGLE or more from the O-H bond (ADR-0028 (b)).
@@ -180,6 +186,11 @@ def derive_constraints(config: dict) -> dict:
     # distribution fixed this way). The mean m = bonds / anions bounds every
     # anion to [floor(m), ceil(m)]; no number here is read off a reference.
     counts = parse_composition(config["composition"])
+    anion_cns = config.get("anion_coordination_numbers") or {}
+    bad = sorted(x for x in anion_cns if charges.get(x, 0) >= 0)
+    if bad:
+        raise ValueError(f"anion_coordination_numbers names {bad}, which are not anions "
+                         "in ionic_charges")
     framework = [c for c in sorted(cns) if c in present and c != "H"]
     if framework:
         ranges = {c: _cn_range(cns[c]) for c in framework}
@@ -205,9 +216,12 @@ def derive_constraints(config: dict) -> dict:
                 if (x, frozenset(near)) in stated_anion:
                     continue
                 cut = max(bond_band(c, int(charges[c]), x, *ranges[c])["cutoff"] for c in near)
+                cn_lo, cn_hi = math.floor(m_lo + 1e-9), math.ceil(m_hi - 1e-9)
+                if tag.endswith("anion CN") and x in anion_cns:
+                    cn_lo, cn_hi = _cn_range(anion_cns[x])
                 coords.append({"center_atom": x,
                                "neighbor_atom": near[0] if len(near) == 1 else list(near),
-                               "cn_min": math.floor(m_lo + 1e-9), "cn_max": math.ceil(m_hi - 1e-9),
+                               "cn_min": cn_lo, "cn_max": cn_hi,
                                "cutoff_distance": cut, "weight": 1.0,
                                "label": f"{x}({'/'.join(near)}) [{tag}]"})
 

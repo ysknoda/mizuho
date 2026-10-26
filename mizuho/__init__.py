@@ -2,7 +2,7 @@
 bonding, and space-group/Wyckoff-position constraints.
 """
 
-from .composition import discover_compositions, parse_composition
+from .composition import parse_composition
 from .objective.energy import compute_error
 from .optimize.driver import optimize_one_assignment
 from .search.dfs import wyckoff_tree_search
@@ -13,7 +13,6 @@ __version__ = "0.1.0a8"
 
 __all__ = [
     "parse_composition",
-    "discover_compositions",
     "wyckoff_tree_search",
     "spacegroup_auto_search",
     "build_structure",

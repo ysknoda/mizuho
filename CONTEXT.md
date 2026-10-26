@@ -57,6 +57,17 @@ Two Wyckoff assignments related by the Euclidean normalizer, and therefore the s
 spinel's `Mg@a Al@d O@e` and `Mg@b Al@c O@e`. Merged before Phase 1 ranking.
 _Avoid_: orbit (reserved for the point orbit of one Wyckoff position), duplicate topology
 
+**Composition-free search**:
+A Wyckoff search given elements and charges but no composition: every charge-neutral assignment
+within the primitive-cell atom bound is a leaf, and its reduced formula is its composition
+(ADR-0033).
+_Avoid_: auto-composition (the removed mode that enumerated compositions first)
+
+**Centring factor**:
+Lattice points per conventional cell (P 1, A/B/C/I 2, R 3, F 4). A Wyckoff multiplicity divided
+by it is an atom count in the primitive cell.
+_Avoid_: lattice multiplicity
+
 **Free-parameter stratum**:
 The candidates of one space group that share the same number of free Wyckoff coordinates. The
 ranking surrogate favours low-count strata systematically.

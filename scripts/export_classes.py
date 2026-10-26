@@ -12,6 +12,10 @@ exported cell is recomputed and must equal the class's.
     python scripts/export_classes.py --out runs/classes/tio2 \\
         runs/exhaustive_adr0030/tio2_rutile.yaml:runs/exhaustive_adr0030/tio2_rutile.jsonl \\
         runs/exhaustive_adr0030/tio2_anatase.yaml:runs/exhaustive_adr0030/tio2_anatase.jsonl
+
+A composition-free run (ADR-0033) records each entry's composition; its
+classes are kept apart per composition and written to one subdirectory per
+composition, with one summary table over all of them.
 """
 
 import argparse
@@ -45,7 +49,8 @@ def graph_of(lattice, species, frac, config):
 
 
 def collect(pairs, threshold):
-    """{topology key: [(error, sg, entry, config, run name)]} over all records."""
+    """{(composition, topology key): [(error, sg, entry, config, run name)]}
+    over all records; the composition is None for a fixed-composition run."""
     classes = defaultdict(list)
     for cfg_path, rec_path in pairs:
         config = yaml.safe_load(open(cfg_path))
@@ -54,7 +59,7 @@ def collect(pairs, threshold):
             r = json.loads(line)
             for e in r["entries"]:
                 if e["error"] is not None and e["error"] <= threshold and e["topology"]:
-                    classes[e["topology"]].append(
+                    classes[(e.get("composition"), e["topology"])].append(
                         (e["error"], int(r["sg"]), e, config, name)
                     )
     return classes
@@ -182,11 +187,17 @@ def main(argv=None):
         det = e["detected_sg"] or sg
         return (-point_group_order(det), err)
 
-    ordered = sorted(classes.items(), key=lambda kv: min(rep_key(i) for i in kv[1]))
+    ordered = sorted(classes.items(),
+                     key=lambda kv: (kv[0][0] or "", min(rep_key(i) for i in kv[1])))
     rows = []
-    for n, (key, items) in enumerate(ordered, 1):
+    numbers = Counter()
+    for (composition, key), items in ordered:
+        numbers[composition] += 1
+        n = numbers[composition]
         err, sg, e, config, run = min(items, key=rep_key)
-        sgc = build_sg_config(config, sg)
+        sgc = build_sg_config(config, sg, composition=composition)
+        cdir = out if composition is None else out / composition
+        cdir.mkdir(parents=True, exist_ok=True)
         st = _entries_from_record(sg, [e], sgc)[0][4]
         lat, frac, species, data = primitive(st)
         g = graph_of(lat, species, frac, sgc)
@@ -207,13 +218,14 @@ def main(argv=None):
             f"{tag} {''.join(f'{e}{k}' for e, k in comp.items())} {data.international} "
             f"(from run {run}, optimised in SG {sg}, error {err:.2g})"
         )
-        write_cif(out / f"{tag}.cif", title, lat, frac, species)
-        n_conv = check_cif(out / f"{tag}.cif", lat, frac, species, sgc, key)
-        write_poscar(out / f"{tag}.vasp", title, lat, frac, species)
+        write_cif(cdir / f"{tag}.cif", title, lat, frac, species)
+        n_conv = check_cif(cdir / f"{tag}.cif", lat, frac, species, sgc, key)
+        write_poscar(cdir / f"{tag}.vasp", title, lat, frac, species)
         rows.append(
             {
+                "composition": sgc["composition"],
                 "class": n,
-                "file": tag,
+                "file": str((cdir / tag).relative_to(out)),
                 "spacegroup": f"{data.international} ({data.number})",
                 "atoms_primitive": len(species),
                 "atoms_conventional": n_conv,
@@ -241,7 +253,7 @@ def main(argv=None):
         w.writerows(rows)
     for r in rows:
         print(
-            f"{r['class']:>3} {r['spacegroup']:<14} atoms {r['atoms_primitive']:>3}  Z {r['formula_units']:>2}"
+            f"{r['composition']:<10} {r['class']:>3} {r['spacegroup']:<14} atoms {r['atoms_primitive']:>3}  Z {r['formula_units']:>2}"
             f"  V/fu {r['V_per_fu_A3']:7.2f}  dim {r['dimensionality']}"
             f"  c/e/f {r['corner_edge_face_per_cation']:<10} n {r['entries']:>3}  {r['runs']}"
         )
