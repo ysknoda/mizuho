@@ -33,6 +33,7 @@ import numpy as np
 from .. import bond_graph as bg
 from .._parallel_utils import run_parallel_tasks
 from ..structure import build_structure
+from ..errors import ConfigError
 
 DEFAULT_THRESHOLD = 1e-3
 DEFAULT_HITS = 2
@@ -56,32 +57,32 @@ def grouping_settings(opt_cfg: dict) -> GroupingSettings:
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping must be a mapping, "
             f"got {type(raw).__name__}"
         )
     unknown = set(raw) - {"zero_error_threshold", "early_stop", "early_stop_hits"}
     if unknown:
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping: unknown key(s) "
             f"{sorted(unknown)}; allowed: zero_error_threshold, "
             "early_stop, early_stop_hits"
         )
     thr = raw.get("zero_error_threshold", DEFAULT_THRESHOLD)
     if isinstance(thr, bool) or not isinstance(thr, (int, float)) or not thr > 0:
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping.zero_error_threshold "
             f"must be a positive number, got {thr!r}"
         )
     stop = raw.get("early_stop", True)
     if not isinstance(stop, bool):
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping.early_stop must be "
             f"true or false, got {stop!r}"
         )
     hits = raw.get("early_stop_hits", DEFAULT_HITS)
     if isinstance(hits, bool) or not isinstance(hits, int) or hits < 1:
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping.early_stop_hits must "
             f"be a positive integer, got {hits!r}"
         )

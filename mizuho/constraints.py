@@ -50,6 +50,7 @@ from typing import Dict
 from .composition import parse_composition
 from .config import TETRAHEDRAL_MIN_VALENCE
 from .data.bond_valence import B_BOND_VALENCE, r0
+from .errors import ConfigError
 
 BAND_VU = 0.16
 SMOOTHING_WIDTH = 0.10  # energy.py's default coordination smoothing width
@@ -85,7 +86,7 @@ def _cn_range(value):
     else:
         lo = hi = int(value)
     if not 0 < lo <= hi:
-        raise ValueError(f"coordination_numbers: bad range {value!r}")
+        raise ConfigError(f"coordination_numbers: bad range {value!r}")
     return lo, hi
 
 
@@ -97,7 +98,7 @@ def _bonded_anions(config: dict, cation: str, anions: list) -> list:
     stated = [stated] if isinstance(stated, str) else list(stated)
     bad = [x for x in stated if x not in anions]
     if bad or not stated:
-        raise ValueError(f"bonded_anions: {cation} names {stated!r}; "
+        raise ConfigError(f"bonded_anions: {cation} names {stated!r}; "
                          f"the anions present are {anions!r}")
     return sorted(stated)
 
@@ -108,11 +109,11 @@ def bond_band(cation: str, valence: int, anion: str, cn_lo: int, cn_hi: int) -> 
     of centring (ADR-0028 (c))."""
     R0 = r0(cation, valence, anion)
     if R0 is None:
-        raise ValueError(f"no bond-valence R0 for {cation}({valence})-{anion}; "
+        raise ConfigError(f"no bond-valence R0 for {cation}({valence})-{anion}; "
                          "state its bond_constraints explicitly")
     s0 = valence / ((cn_lo + cn_hi) / 2)
     if s0 < MIN_S0:
-        raise ValueError(f"{cation}-{anion}: bond valence s0 = {s0:.3f} is below {MIN_S0} "
+        raise ConfigError(f"{cation}-{anion}: bond valence s0 = {s0:.3f} is below {MIN_S0} "
                          "(ADR-0028's validated range); state its bond_constraints explicitly")
     d_min = R0 - B_BOND_VALENCE * math.log(s0 + BAND_VU)
     d_max = R0 - B_BOND_VALENCE * math.log(s0 - BAND_VU)
@@ -131,7 +132,7 @@ def derive_constraints(config: dict) -> dict:
     present = set(parse_composition(config["composition"]))
     anions = sorted(e for e in present if charges.get(e, 0) < 0)
     if not anions:
-        raise ValueError("coordination_numbers needs ionic_charges with at least one anion")
+        raise ConfigError("coordination_numbers needs ionic_charges with at least one anion")
 
     bonds = list(config.get("bond_constraints", []))
     coords = list(config.get("coordination_constraints", []))
@@ -147,7 +148,7 @@ def derive_constraints(config: dict) -> dict:
             continue
         valence = charges.get(cation, 0)
         if valence <= 0 or valence != int(valence):
-            raise ValueError(f"coordination_numbers: {cation} needs a positive integer charge")
+            raise ConfigError(f"coordination_numbers: {cation} needs a positive integer charge")
         lo, hi = _cn_range(cn)
         bonded = _bonded_anions(config, cation, anions)
         cutoffs = []
@@ -189,7 +190,7 @@ def derive_constraints(config: dict) -> dict:
     anion_cns = config.get("anion_coordination_numbers") or {}
     bad = sorted(x for x in anion_cns if charges.get(x, 0) >= 0)
     if bad:
-        raise ValueError(f"anion_coordination_numbers names {bad}, which are not anions "
+        raise ConfigError(f"anion_coordination_numbers names {bad}, which are not anions "
                          "in ionic_charges")
     framework = [c for c in sorted(cns) if c in present and c != "H"]
     if framework:

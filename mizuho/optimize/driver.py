@@ -11,6 +11,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from ..constraints import ideal_bond_config
+from ..errors import ConfigError
 from ..objective.energy import compute_error
 from ..structure import assignments_to_sites, build_bounds, build_structure
 from .basin_hopping import multistart_basin_hopping
@@ -62,6 +63,12 @@ if _mcmc_module.EMCEE_AVAILABLE:
     _OPTIONAL_BACKENDS["mcmc"] = _mcmc_module.multistart_mcmc
 
 
+# Exceptions that never mean "this candidate did not converge": a config
+# error, or a defect in the code. optimize_assignment lets them through.
+_INPUT_OR_DEFECT = (ConfigError, KeyError, TypeError, AttributeError, NameError,
+                    ImportError)
+
+
 def _resolve_backend(name):
     """Resolve optimization.backend's string value to an optimize_fn
     callable. Raises a clear, actionable error for an unknown OR
@@ -90,7 +97,7 @@ def _resolve_backend(name):
         raise ImportError(
             f"optimization.backend {name!r} requires the optional 'emcee' "
             f"package -- install it with: pip install mizuho[mcmc]")
-    raise ValueError(
+    raise ConfigError(
         f"Unknown optimization.backend {name!r}; available backends: "
         f"{sorted(all_backends)}")
 
@@ -429,7 +436,7 @@ def optimize_assignment(
             "optimization.refine_jac requires the optional 'jax' "
             "package -- install it with: pip install mizuho[jax]")
     if refine_jac and cfg.get("hybridisation_constraints"):
-        raise ValueError(
+        raise ConfigError(
             "optimization.refine_jac is not supported together with "
             "hybridisation_constraints: this term's hard neighbour "
             "cutoff and 'ang > 150 deg -> skip' branch have not been "
@@ -514,11 +521,16 @@ def optimize_assignment(
                 n_stage1=ledger.n_added, stopped_early=ledger.stopped))
         return _merge_classes(results)
 
+    except _INPUT_OR_DEFECT as exc:
+        # A wrong config or a code defect fails every candidate the same
+        # way; reporting each as one failed optimisation hid it (ADR-0034).
+        raise exc
     except Exception as exc:
         if verbose:
             import traceback
             traceback.print_exc()
-            print(f"    [WARN] Optimisation failed for {label}: {exc}")
+        print(f"    [WARN] Optimisation failed for {label}: "
+              f"{type(exc).__name__}: {exc}")
         return []
 
 

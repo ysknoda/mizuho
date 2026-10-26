@@ -31,7 +31,8 @@ from .search import auto_search_spacegroups
 from .normalizer import (
     assignment_key, canonical_key, letter_permutations, polar_directions,
 )
-from .objective.penalties import reject_removed_keys
+from .errors import ConfigError
+from .objective.penalties import reject_removed_keys, validate_constraint_entries
 from .structure import assignments_to_sites, build_structure, resolve_fixed_assignment
 from .symmetry import SUCCESS_TOLERANCE, hall_number_of_sg, point_group_order
 
@@ -265,6 +266,11 @@ def _cmd_run(args) -> None:
             print(f"ERROR: {e}"); sys.exit(1)
     elements  = (list(config["elements"]) if comp_free
                  else list(parse_composition(config["composition"]).keys()))
+    # Derive the constraints once before any search, so an input error stops
+    # here and not hours later at the first group that reaches it (ADR-0034).
+    # Without a composition, one formula unit of each element stands in.
+    build_sg_config(config, int(config.get("spacegroup") or 1),
+                    composition="".join(elements) if comp_free else None)
     ts_cfg    = config.get("tree_search", {})
     max_cands = ts_cfg.get("max_candidates", 50)
 
@@ -558,9 +564,12 @@ def _load_config(path: str) -> dict:
         print(f"ERROR: {input_path} not found."); sys.exit(1)
     with open(input_path) as fh:
         config = yaml.safe_load(fh)
+    if not isinstance(config, dict):
+        print(f"ERROR: {input_path} is not a YAML mapping."); sys.exit(1)
     try:
         reject_removed_keys(config)
-    except ValueError as e:
+        validate_constraint_entries(config)
+    except ConfigError as e:
         print(f"ERROR: {e}"); sys.exit(1)
     return config
 
@@ -1022,4 +1031,10 @@ def main(argv=None):
     p.set_defaults(func=_cmd_suggest)
 
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except ConfigError as e:
+        # An input error, wherever it is found; anything else is a defect and
+        # keeps its traceback (ADR-0034).
+        print(f"ERROR: {e}")
+        sys.exit(1)

@@ -9,6 +9,8 @@ from typing import Dict, List
 
 import numpy as np
 
+from ..errors import ConfigError
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,16 +26,64 @@ def reject_removed_keys(config: dict) -> None:
     Silently ignoring such a key would let a user believe it still does
     something (docs/adr/0009-always-normalise-penalties.md)."""
     if "normalize_penalties" in config:
-        raise ValueError(
+        raise ConfigError(
             "config key 'normalize_penalties' was removed: penalty "
             "normalisation is always on (docs/adr/0009-always-normalise-"
             "penalties.md). Delete the key from the config.")
     for key in ("auto_composition", "auto_composition_settings"):
         if key in config:
-            raise ValueError(
+            raise ConfigError(
                 f"config key {key!r} was removed: omit 'composition' and state "
                 "'elements' and tree_search.max_atoms for the composition-free "
                 "search (docs/adr/0033-composition-free-wyckoff-search.md).")
+
+
+# Keys a constraint entry cannot do without: none of them has a default.
+# Everything else in an entry (weight, cutoff, angle_cutoff, label, ...)
+# has one (README, "Configuration reference"; ADR-0034).
+REQUIRED_ENTRY_KEYS = {
+    "bond_constraints": ("atom1", "atom2", "distance_min", "distance_max"),
+    "coordination_constraints": ("center_atom", "neighbor_atom", "cn_min", "cn_max",
+                                 "cutoff_distance"),
+    "angle_constraints": ("atom_center", "atom_neighbor", "angle_min", "angle_max"),
+    "repulsion_constraints": ("atom1", "atom2", "distance_min"),
+    "hybridisation_constraints": ("element", "hybridisation"),
+}
+
+
+def validate_constraint_entries(config: dict) -> None:
+    """Refuse a constraint entry that lacks a required key, and a
+    volume_constraint stating only one bound.
+
+    Before this check a bond or repulsion entry without, say, distance_min
+    raised a KeyError inside every candidate's optimisation, each reported
+    as "optimisation failed", and the run ended normally with error 1e10
+    everywhere; a lone volume_min was ignored in favour of the automatic
+    band (ADR-0034). Every problem is listed at once."""
+    problems = []
+    for name, required in REQUIRED_ENTRY_KEYS.items():
+        entries = config.get(name)
+        if entries is None:
+            continue
+        if not isinstance(entries, list):
+            problems.append(f"{name} must be a list of entries, got {type(entries).__name__}")
+            continue
+        for k, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                problems.append(f"{name}[{k}] must be a mapping, got {type(entry).__name__}")
+                continue
+            missing = [key for key in required if key not in entry]
+            if missing:
+                problems.append(f"{name}[{k}] is missing {', '.join(missing)}")
+    vc = config.get("volume_constraint")
+    if isinstance(vc, dict) and ("volume_min" in vc) != ("volume_max" in vc):
+        given = "volume_min" if "volume_min" in vc else "volume_max"
+        problems.append(f"volume_constraint states only {given}: state both volume_min "
+                        "and volume_max, or neither for the automatic band")
+    elif vc is not None and not isinstance(vc, dict):
+        problems.append(f"volume_constraint must be a mapping, got {type(vc).__name__}")
+    if problems:
+        raise ConfigError("; ".join(problems))
 
 
 def _penalty(v, vmin, vmax, w=1.0, scale=1.0) -> float:

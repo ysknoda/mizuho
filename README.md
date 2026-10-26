@@ -226,6 +226,22 @@ commonly used top-level keys are:
 | `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ...; `topology_grouping` (see below) |
 | `composition_pool` | List of composition strings to search over |
 
+### Required keys
+
+Every key has a default except these, and a config that lacks one stops at load with an
+`ERROR:` line naming the entry and key
+([ADR-0034](docs/adr/0034-input-errors-stop-at-load.md)):
+
+- `composition` or `elements` (one of them), and `spacegroup` or `mode: auto_spacegroup`;
+  with `elements`, `ionic_charges` for every element and `tree_search.max_atoms`;
+  with `coordination_numbers`, `ionic_charges` including an anion.
+- In each entry of `bond_constraints`: `atom1 atom2 distance_min distance_max`;
+  `coordination_constraints`: `center_atom neighbor_atom cn_min cn_max cutoff_distance`;
+  `angle_constraints`: `atom_center atom_neighbor angle_min angle_max`;
+  `repulsion_constraints`: `atom1 atom2 distance_min`;
+  `hybridisation_constraints`: `element hybridisation`.
+- `volume_constraint`: both `volume_min` and `volume_max`, or neither (automatic band).
+
 ### Composition-free search
 
 Omit `composition` and name the elements; the Wyckoff tree search accepts every charge-neutral

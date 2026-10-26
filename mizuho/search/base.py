@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ..composition import _all_charges_zero, parse_composition
 from ..data import WYCKOFF_DB, WyckoffEntry
+from ..errors import ConfigError
 from ..structure import SiteAssignment
 
 
@@ -129,22 +130,22 @@ class AssignmentProblem:
         elements = list(config["elements"])
         ts_cfg   = config.get("tree_search", {})
         if len(set(elements)) != len(elements):
-            raise ValueError(f"elements lists an element twice: {elements}")
+            raise ConfigError(f"elements lists an element twice: {elements}")
         if any(ionic_q.get(e, 0) == 0 for e in elements):
-            raise ValueError(
+            raise ConfigError(
                 "a composition-free search needs a non-zero ionic charge for every "
                 f"element (ionic_charges {ionic_q}, elements {elements}): charge "
                 "neutrality is what selects its compositions (ADR-0033)")
         if not any(ionic_q[e] > 0 for e in elements) or not any(ionic_q[e] < 0 for e in elements):
-            raise ValueError("a composition-free search needs a cation and an anion")
+            raise ConfigError("a composition-free search needs a cation and an anion")
         max_atoms = ts_cfg.get("max_atoms")
         if not isinstance(max_atoms, int) or max_atoms < 1:
-            raise ValueError(
+            raise ConfigError(
                 "a composition-free search needs tree_search.max_atoms, the atom "
                 "count bound of the primitive cell (ADR-0033)")
         for key in ("max_formula_units", "max_atoms_per_fu"):
             if key in ts_cfg:
-                raise ValueError(f"tree_search.{key} does not apply without a "
+                raise ConfigError(f"tree_search.{key} does not apply without a "
                                  "composition; tree_search.max_atoms bounds the cell")
         return cls(
             sg=sg,

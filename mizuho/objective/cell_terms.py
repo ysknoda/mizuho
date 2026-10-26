@@ -24,6 +24,7 @@ import numpy as np
 from scipy.spatial import QhullError, Voronoi, cKDTree
 
 from ..composition import parse_composition
+from ..errors import ConfigError
 from ..data.atomic_weights import ATOMIC_WEIGHT, G_CM3_TO_U_A3
 from .penalties import _midpoint_scale, _penalty
 
@@ -44,7 +45,7 @@ def _band(value):
         return value * (1 - SINGLE_VALUE_MARGIN), value * (1 + SINGLE_VALUE_MARGIN)
     lo, hi = (float(v) for v in value)
     if not 0 < lo <= hi:
-        raise ValueError(f"density band must satisfy 0 < min <= max, got {value!r}")
+        raise ConfigError(f"density band must satisfy 0 < min <= max, got {value!r}")
     return lo, hi
 
 
@@ -54,7 +55,7 @@ def formula_mass(composition: str) -> float:
     comp = parse_composition(composition)
     missing = sorted(set(comp) - set(ATOMIC_WEIGHT))
     if missing:
-        raise ValueError(
+        raise ConfigError(
             f"no standard atomic weight for {missing}; add it to "
             "mizuho/data/atomic_weights.py"
         )
@@ -65,7 +66,7 @@ def density_band_u_a3(config: dict):
     """(rho_min, rho_max) in u/A^3, or None when no density is stated."""
     g, u = config.get("density_g_cm3"), config.get("density_u_A3")
     if g is not None and u is not None:
-        raise ValueError("state density_g_cm3 or density_u_A3, not both")
+        raise ConfigError("state density_g_cm3 or density_u_A3, not both")
     if g is not None:
         lo, hi = _band(g)
         return lo * G_CM3_TO_U_A3, hi * G_CM3_TO_U_A3
@@ -199,7 +200,7 @@ def void_settings(config: dict):
     r_min = float(v.get("r_hole_min", 0.0))
     r_max = float(v.get("r_hole_max", np.inf))
     if not r_min <= r_max:
-        raise ValueError(f"void needs r_hole_min <= r_hole_max, got {v!r}")
+        raise ConfigError(f"void needs r_hole_min <= r_hole_max, got {v!r}")
     return r_min, r_max, float(v.get("weight", VOID_WEIGHT))
 
 
