@@ -51,7 +51,10 @@ the 30 smallest compositions per group without saying so. Design review of 2026-
   order inside each) and a composition summary; `--top N` writes N classes per composition.
   The record carries each entry's composition and resumes as before.
   `scripts/export_classes.py` keeps classes apart per composition, one subdirectory each, with
-  a `composition` column in `classes.csv`. Comparing errors across compositions is allowed
+  a `composition` column in `classes.csv`. `--best N` also exports each composition's N
+  lowest-error classes whatever their error (a `within_threshold` column marks them), so a
+  composition that never reaches zero error still gets its closest structures; run on a record
+  still being written, it reports a run's progress (`runs/alon/progress/<MMDD_HHMM>/`). Comparing errors across compositions is allowed
   (every term is normalised, ADR-0009) but means nothing among zero-error entries.
 - **`auto_composition` is removed (Q6),** with `discover_compositions`; a config that still
   sets `auto_composition` or `auto_composition_settings` is rejected with a pointer here (as

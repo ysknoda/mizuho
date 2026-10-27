@@ -16,6 +16,12 @@ exported cell is recomputed and must equal the class's.
 A composition-free run (ADR-0033) records each entry's composition; its
 classes are kept apart per composition and written to one subdirectory per
 composition, with one summary table over all of them.
+
+`--best N` also exports, per composition, the N lowest-error classes
+whatever their error, so a composition that never reaches the threshold
+still gets its closest structures; the table then marks which classes are
+within the threshold. Run on a record still being written, it reports a
+run's progress.
 """
 
 import argparse
@@ -48,9 +54,14 @@ def graph_of(lattice, species, frac, config):
     )
 
 
-def collect(pairs, threshold):
+def collect(pairs, threshold, best=0):
     """{(composition, topology key): [(error, sg, entry, config, run name)]}
-    over all records; the composition is None for a fixed-composition run."""
+    over all records; the composition is None for a fixed-composition run.
+
+    Classes with an entry at or below `threshold`, and with best > 0 also
+    each composition's `best` lowest-error classes. Without `best` only the
+    entries at or below the threshold are kept, as before; with it every
+    entry of a kept class is."""
     classes = defaultdict(list)
     for cfg_path, rec_path in pairs:
         config = yaml.safe_load(open(cfg_path))
@@ -58,10 +69,17 @@ def collect(pairs, threshold):
         for line in open(rec_path):
             r = json.loads(line)
             for e in r["entries"]:
-                if e["error"] is not None and e["error"] <= threshold and e["topology"]:
+                if e["error"] is not None and (best or e["error"] <= threshold) and e["topology"]:
                     classes[(e.get("composition"), e["topology"])].append(
                         (e["error"], int(r["sg"]), e, config, name)
                     )
+    if best:
+        lowest = defaultdict(list)
+        for (comp, key), items in classes.items():
+            lowest[comp].append((min(i[0] for i in items), key))
+        keep = {(comp, key) for comp, errs in lowest.items()
+                for k, (err, key) in enumerate(sorted(errs)) if k < best or err <= threshold}
+        classes = {ck: items for ck, items in classes.items() if ck in keep}
     return classes
 
 
@@ -176,16 +194,23 @@ def main(argv=None):
     p.add_argument("runs", nargs="+", help="config.yaml:record.jsonl, one per run")
     p.add_argument("--out", required=True, help="output directory")
     p.add_argument("--threshold", type=float, default=1e-3)
+    p.add_argument("--best", type=int, default=0,
+                   help="also export each composition's N lowest-error classes, "
+                        "whatever their error (default 0: threshold only)")
     a = p.parse_args(argv)
 
-    classes = collect([r.split(":") for r in a.runs], a.threshold)
+    classes = collect([r.split(":") for r in a.runs], a.threshold, a.best)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
 
     def rep_key(item):
+        # Within the threshold the highest symmetry represents a class
+        # (ADR-0026); above it, the lowest error.
         err, sg, e, _, _ = item
+        if err > a.threshold:
+            return (1, 0, err)
         det = e["detected_sg"] or sg
-        return (-point_group_order(det), err)
+        return (0, -point_group_order(det), err)
 
     ordered = sorted(classes.items(),
                      key=lambda kv: (kv[0][0] or "", min(rep_key(i) for i in kv[1])))
@@ -247,6 +272,8 @@ def main(argv=None):
                 "error": f"{err:.2g}",
             }
         )
+        if a.best:
+            rows[-1]["within_threshold"] = err <= a.threshold
     with open(out / "classes.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
