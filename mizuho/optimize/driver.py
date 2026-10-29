@@ -523,7 +523,7 @@ def optimize_assignment(
 
     except _INPUT_OR_DEFECT as exc:
         # A wrong config or a code defect fails every candidate the same
-        # way; reporting each as one failed optimisation hid it (ADR-0034).
+        # way; reporting each as one failed optimisation hid it (ADR-0036).
         raise exc
     except Exception as exc:
         if verbose:

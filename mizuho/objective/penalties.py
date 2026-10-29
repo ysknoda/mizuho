@@ -40,7 +40,7 @@ def reject_removed_keys(config: dict) -> None:
 
 # Keys a constraint entry cannot do without: none of them has a default.
 # Everything else in an entry (weight, cutoff, angle_cutoff, label, ...)
-# has one (README, "Configuration reference"; ADR-0034).
+# has one (README, "Configuration reference"; ADR-0036).
 REQUIRED_ENTRY_KEYS = {
     "bond_constraints": ("atom1", "atom2", "distance_min", "distance_max"),
     "coordination_constraints": ("center_atom", "neighbor_atom", "cn_min", "cn_max",
@@ -59,7 +59,7 @@ def validate_constraint_entries(config: dict) -> None:
     raised a KeyError inside every candidate's optimisation, each reported
     as "optimisation failed", and the run ended normally with error 1e10
     everywhere; a lone volume_min was ignored in favour of the automatic
-    band (ADR-0034). Every problem is listed at once."""
+    band (ADR-0036). Every problem is listed at once."""
     problems = []
     for name, required in REQUIRED_ENTRY_KEYS.items():
         entries = config.get(name)

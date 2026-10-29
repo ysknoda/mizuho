@@ -1,4 +1,4 @@
-"""The error a wrong input raises (ADR-0034)."""
+"""The error a wrong input raises (ADR-0036)."""
 
 
 class ConfigError(ValueError):

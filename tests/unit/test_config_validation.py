@@ -1,6 +1,6 @@
-"""Input errors stop at load time with one `ERROR:` line (ADR-0034).
+"""Input errors stop at load time with one `ERROR:` line (ADR-0036).
 
-Before ADR-0034 a bond or repulsion entry without a required key raised a
+Before ADR-0036 a bond or repulsion entry without a required key raised a
 KeyError inside every candidate's optimisation, each reported as
 "optimisation failed", and `run` exited 0 with error 1e10 everywhere; a lone
 volume_min was ignored in favour of the automatic band.

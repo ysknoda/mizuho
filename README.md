@@ -230,7 +230,7 @@ commonly used top-level keys are:
 
 Every key has a default except these, and a config that lacks one stops at load with an
 `ERROR:` line naming the entry and key
-([ADR-0034](docs/adr/0034-input-errors-stop-at-load.md)):
+([ADR-0036](docs/adr/0036-input-errors-stop-at-load.md)):
 
 - `composition` or `elements` (one of them), and `spacegroup` or `mode: auto_spacegroup`;
   with `elements`, `ionic_charges` for every element and `tree_search.max_atoms`;

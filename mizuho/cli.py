@@ -267,7 +267,7 @@ def _cmd_run(args) -> None:
     elements  = (list(config["elements"]) if comp_free
                  else list(parse_composition(config["composition"]).keys()))
     # Derive the constraints once before any search, so an input error stops
-    # here and not hours later at the first group that reaches it (ADR-0034).
+    # here and not hours later at the first group that reaches it (ADR-0036).
     # Without a composition, one formula unit of each element stands in.
     build_sg_config(config, int(config.get("spacegroup") or 1),
                     composition="".join(elements) if comp_free else None)
@@ -1035,6 +1035,6 @@ def main(argv=None):
         args.func(args)
     except ConfigError as e:
         # An input error, wherever it is found; anything else is a defect and
-        # keeps its traceback (ADR-0034).
+        # keeps its traceback (ADR-0036).
         print(f"ERROR: {e}")
         sys.exit(1)
