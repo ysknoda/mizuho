@@ -97,6 +97,13 @@ One named contribution to the total error (overlap, bond, angle, CN, repulsion, 
 density, void, aspect ratio, cell validity, hybridisation).
 _Avoid_: energy term, cost component
 
+**Like-charge minimum**:
+The shortest distance two anions (or two cations) bonded to one shared counter-ion can have inside
+the derived bond bands and angle floors; derived as a repulsion constraint for every like-charge
+pair (ADR-0037). A consequence of the bands, not a contact radius: homonuclear polyanions (the S2
+dimer in pyrite) fall below it and need the pair stated.
+_Avoid_: anion radius sum, exclusion distance
+
 **R_hole (largest empty sphere)**:
 The largest distance from a point of the cell to the nearest atom centre, no radii; the void
 term bounds it (ADR-0031). Not the total void volume, which is the volume per formula unit again.

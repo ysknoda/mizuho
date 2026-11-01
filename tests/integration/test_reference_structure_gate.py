@@ -366,6 +366,22 @@ def test_derived_config_scores_zero_at_the_reference(name):
     assert total < 1e-3, f"{name}: derived config scores {total:.6f} at its reference"
 
 
+@pytest.mark.parametrize("name", sorted(n for n in _REFS if n != "pyrite_fes2"))
+def test_derived_like_charge_repulsion_is_zero_at_the_reference(name):
+    """ADR-0037: every derived anion-anion and cation-cation minimum lies
+    below the reference's shortest pair. Pyrite is left out: its S-S is
+    the S2(2-) dimer's covalent bond (2.162 A), which no shared-ion bound
+    describes."""
+    ref = _REFS[name]
+    _, pv, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    full = dict(build_sg_config(_minimal_config(base), ref.sg))
+    full["wyckoff_sites"] = assignments_to_sites(asg)
+    assert full["repulsion_constraints"]
+    bd = error_breakdown(pv, full)
+    assert [r for r in bd["repulsion"] if r["penalty"] > 0] == []
+
+
 def test_centring_pulls_a_strained_wurtzite_cell_back():
     """ADR-0028 (c): the derived search's wurtzite end point (seed 42,
     c +11.3 % on its bound, error 0) is centred inside the derived bond

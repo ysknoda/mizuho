@@ -41,6 +41,21 @@ structure used to supply is derived from that:
   sits at HBOND_MIN_ANGLE or more from the O-H bond (ADR-0028 (b)).
   `auto_hydrogen_bond: false` switches it off.
 
+- Like-charge minimum distances (ADR-0037): for every anion pair and
+  every cation pair present, a `repulsion_constraints` entry at the
+  shortest distance two ions bonded to one shared counter-ion C can have
+  inside the derived constraints: both bonds at their band's short end
+  (a, b) and the angle between them at its floor theta at C (law of
+  cosines; _shared_ion_distance), the smallest over every C both bond.
+  theta at a cation is the Tammes angle of its largest CN (the widest
+  spread CN points on a sphere can have) less LIKE_CHARGE_ANGLE_ALLOWANCE,
+  at least UNBANDED_ANGLE_FLOOR; at an anion it is the anion-centred angle
+  band's lower bound (auto_coupling_angle_range, 80 deg), or
+  UNBANDED_ANGLE_FLOOR where no band covers the pair (H, or the band
+  switched off). A pair no counter-ion bonds both of gets none.
+  `auto_repulsion: false` switches them off; a repulsion the config states
+  for a pair wins.
+
 A constraint the config already states for the same pair wins.
 """
 
@@ -77,6 +92,22 @@ POLYHEDRON_ANGLES = {4: (95.0, 125.0, None), 6: (70.0, 110.0, 150.0)}
 # three-centre bonds with both arms that short are excluded with it.
 HBOND_ACCEPTOR_RANGE = 2.2
 HBOND_MIN_ANGLE = 130.0
+# Like-charge minimum distances (ADR-0037). The Tammes angle of N points:
+# the largest smallest angle N points on a sphere can have (N <= 6 and 12
+# Fejes Toth 1943, 7-9 Schuette & van der Waerden 1951, 10-11 Danzer 1963;
+# not read in the originals from this environment). A CN-n polyhedron's
+# smallest X-M-X angle is taken as that of its most spread arrangement
+# less LIKE_CHARGE_ANGLE_ALLOWANCE, the octahedral band's own allowance
+# (ADR-0028: 90 -> 70 deg), and never below UNBANDED_ANGLE_FLOOR. Smallest
+# reference margins: diopside Ca (CN 8) 60.03 deg and wollastonite Ca (CN 7)
+# 61.2 deg against 60; forsterite Mg (CN 6) 71.9 against 70.
+TAMMES_ANGLE = {2: 180.0, 3: 120.0, 4: 109.47, 5: 90.0, 6: 90.0, 7: 77.87,
+                8: 74.86, 9: 70.53, 10: 66.15, 11: 63.43, 12: 63.43}
+LIKE_CHARGE_ANGLE_ALLOWANCE = 20.0
+# The angle floor where no band covers the pair at the shared ion, and the
+# least any floor goes: two like-charge ions no closer to each other than
+# the shorter of their bonds to the shared ion is long.
+UNBANDED_ANGLE_FLOOR = 60.0
 
 
 def _cn_range(value):
@@ -119,6 +150,97 @@ def bond_band(cation: str, valence: int, anion: str, cn_lo: int, cn_hi: int) -> 
     return {"distance_min": round(d_min, 3), "distance_max": round(d_max, 3),
             "distance_ideal": round(R0 - B_BOND_VALENCE * math.log(s0), 3),
             "cutoff": round(d_max + GRAY_HALF_WIDTHS * SMOOTHING_WIDTH, 3)}
+
+
+def _shared_ion_distance(a: float, b: float, angle: float) -> float:
+    """The shortest distance between two ions bonded to one shared ion
+    by bonds no shorter than a and b, at `angle` deg or more between them.
+    The distance grows with the angle, so the floor angle is taken; at it,
+    the law of cosines at (a, b) unless one bond's foot falls past the
+    other's short end (a < b cos(angle)), where the perpendicular
+    max(a, b) sin(angle) is shorter."""
+    t = math.radians(angle)
+    c = math.cos(t)
+    if a < b * c or b < a * c:
+        return max(a, b) * math.sin(t)
+    return math.sqrt(a * a + b * b - 2.0 * a * b * c)
+
+
+def _anion_angle_floor(config: dict, anion: str, pair: tuple, cations: list,
+                       framework: list) -> float:
+    """The smallest M-X-M' angle the anion-centred constraints allow at
+    `anion` for the cation `pair`: the lowest angle_min of a stated band
+    centred there that covers both, else the auto band's lower bound
+    (config.augment_coupling_constraints), else UNBANDED_ANGLE_FLOOR. The
+    auto band names the framework cations, so with H present it does not
+    cover H (ADR-0028)."""
+    covered = []
+    for a in config.get("angle_constraints", []):
+        if a["atom_center"] != anion:
+            continue
+        nb = a["atom_neighbor"]
+        nb = cations if nb == "X" else ([nb] if isinstance(nb, str) else list(nb))
+        if all(c in nb for c in pair):
+            covered.append(float(a["angle_min"]))
+    if covered:
+        return min(covered)
+    if (config.get("auto_anion_coupling", True) is not False
+            and config.get("auto_anion_coupling_angle", True) is not False
+            and all(c in framework for c in pair)):
+        return float(config.get("auto_coupling_angle_range", [80.0, 160.0])[0])
+    return UNBANDED_ANGLE_FLOOR
+
+
+def _cation_angle_floor(cn_hi: int) -> float:
+    """The smallest X-M-X angle assumed at a cation of largest CN cn_hi."""
+    tammes = TAMMES_ANGLE.get(cn_hi, TAMMES_ANGLE[12])
+    return max(tammes - LIKE_CHARGE_ANGLE_ALLOWANCE, UNBANDED_ANGLE_FLOOR)
+
+
+def like_charge_repulsions(config: dict, bonds: list, cn_ranges: dict, anions: list,
+                           cations: list, bonded_by: dict) -> list:
+    """The derived `repulsion_constraints` (ADR-0037): one per like-charge
+    pair some counter-ion bonds both of, at the shortest distance the
+    shared ion's bands allow, rounded down to the mA. `bonds` is the final
+    bond list (a stated bond wins, so its distance_min is used)."""
+    short = {}
+    for b in bonds:
+        if isinstance(b["atom2"], str) and "distance_min" in b:
+            short[frozenset((b["atom1"], b["atom2"]))] = float(b["distance_min"])
+    framework = [c for c in cations if c != "H"] if "H" in cations else list(cations)
+    out = []
+
+    def add(e1, e2, candidates, kind):
+        if candidates:
+            d = math.floor(min(candidates) * 1000.0) / 1000.0
+            out.append({"atom1": e1, "atom2": e2, "distance_min": d, "weight": 1.0,
+                        "label": f"{e1}-{e2} [derived, {kind}]"})
+
+    for i, x in enumerate(anions):
+        for y in anions[i:]:
+            cands = []
+            for m in cations:
+                # A cation of CN 1 (H) bonds one anion: no pair meets at it.
+                if cn_ranges[m][1] < 2 or x not in bonded_by[m] or y not in bonded_by[m]:
+                    continue
+                a, b = short.get(frozenset((m, x))), short.get(frozenset((m, y)))
+                if a is None or b is None:
+                    continue
+                cands.append(_shared_ion_distance(a, b, _cation_angle_floor(cn_ranges[m][1])))
+            add(x, y, cands, "anion-anion")
+    for i, m in enumerate(cations):
+        for n in cations[i:]:
+            cands = []
+            for x in anions:
+                if x not in bonded_by[m] or x not in bonded_by[n]:
+                    continue
+                a, b = short.get(frozenset((m, x))), short.get(frozenset((n, x)))
+                if a is None or b is None:
+                    continue
+                cands.append(_shared_ion_distance(
+                    a, b, _anion_angle_floor(config, x, (m, n), cations, framework)))
+            add(m, n, cands, "cation-cation")
+    return out
 
 
 def derive_constraints(config: dict) -> dict:
@@ -263,6 +385,18 @@ def derive_constraints(config: dict) -> dict:
         bv["tolerance"] = tol
         out["bond_valence"] = bv
     out["bond_constraints"] = bonds
+    if config.get("auto_repulsion", True) is not False:
+        cations = sorted(c for c in cns if c in present)
+        stated_rep = {frozenset((r["atom1"], r["atom2"]))
+                      for r in config.get("repulsion_constraints", [])
+                      if isinstance(r["atom2"], str) and r["atom2"] != "X"}
+        derived = like_charge_repulsions(
+            config, bonds, {c: _cn_range(cns[c]) for c in cations}, anions, cations,
+            {c: _bonded_anions(config, c, anions) for c in cations})
+        reps = list(config.get("repulsion_constraints", []))
+        reps += [r for r in derived if frozenset((r["atom1"], r["atom2"])) not in stated_rep]
+        if reps:
+            out["repulsion_constraints"] = reps
     out["angle_constraints"] = angles
     out["coordination_constraints"] = coords
     if "auto_coupling_cutoff" not in config and anion_cutoff:

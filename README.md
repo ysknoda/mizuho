@@ -265,7 +265,7 @@ angle_constraints:
 
 ### Constraints derived from cited coordination numbers
 
-For a compound with no reference structure, state the composition, `ionic_charges` and, per cation, its cited coordination number; mizuho derives the bond bands, cutoffs, coordination, angle and bond-valence constraints from them ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)). A constraint the config states for the same pair wins.
+For a compound with no reference structure, state the composition, `ionic_charges` and, per cation, its cited coordination number; mizuho derives the bond bands, cutoffs, coordination, angle, bond-valence and like-charge distance constraints from them ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)). A constraint the config states for the same pair wins.
 
 ```yaml
 coordination_numbers: {Al: 6, Si: 4}
@@ -279,6 +279,7 @@ bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every
 | `anion_coordination_numbers` | [floor(m), ceil(m)] | Per anion, its CN over the framework cations, in place of the range the mean m gives all anions together ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
 | `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
+| `auto_repulsion` | `true` | A `repulsion_constraints` minimum for every anion-anion and cation-cation pair: the shortest distance two ions sharing a counter-ion can have inside the derived bands and angle floors ([ADR-0037](docs/adr/0037-derived-like-charge-minimum-distances.md)); `false` for homonuclear polyanions (S2, O2, N3) or to reproduce older runs |
 | `optimization.centring` | `true` | After Stage 2, move a zero-error point to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back |
 
 ### Automatic anion coupling
