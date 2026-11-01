@@ -591,6 +591,7 @@ def _reopt_one(task):
         "nit": int(res.nit),
         "status": int(res.status),  # 0 converged, 1 iteration limit
         "seconds": round(time.time() - t0, 1),
+        "params": [float(v) for v in x],
     }
 
 
@@ -829,18 +830,23 @@ def cmd_report(a):
         cells = [label, sum(keep(r) for r in rows)]
         for (_, f), tot in zip(cats, totals):
             cells.append(f"{sum(f(r['mace']) and not keep(r) for r in relaxed)}/{tot}")
-        lowk = [
+        energies = [
             r["mace"]["e_hull"]
             for r in relaxed
             if keep(r) and not r["mace"]["excluded"]
         ]
-        cells.append(f"{np.median(lowk):.0f}" if lowk else "-")
+        cells.append(f"{np.median(energies):.0f}" if energies else "-")
+        # Share of the kept classes at or below LOW_MEV; the unfiltered
+        # share is the baseline a term must beat to select for energy.
+        n_kept = sum(keep(r) for r in relaxed)
+        n_low = sum(e <= LOW_MEV for e in energies)
+        cells.append(f"{100 * n_low / n_kept:.1f}" if n_kept else "-")
         return cells
 
     header = (
         ["term(s)", "classes kept"]
         + [f"removed: {c}" for c, _ in cats]
-        + ["median E kept (meV)"]
+        + ["median E kept (meV)", f"% kept <= {LOW_MEV:.0f} meV"]
     )
     md += ["## At the recorded points", ""]
     md.append(
