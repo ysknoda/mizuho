@@ -34,7 +34,6 @@ are held as integers in units of 1/24.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
-from itertools import product
 from math import ceil, floor, gcd
 from typing import Optional
 
@@ -366,6 +365,8 @@ class BondRules:
     pairs: frozenset[tuple[str, str]]  # (cation, anion) with a bond relation
     cation_rules: tuple[CountRule, ...]
     anion_rules: tuple[CountRule, ...]
+    # (cation, anion) -> the distance below which the pair is bonded
+    cutoffs: tuple[tuple[tuple[str, str], float], ...] = ()
 
 
 def _forbidden_windows(config: dict, present: set, charges: dict, a: str, b: str):
@@ -507,6 +508,7 @@ def bond_rules(config: dict) -> BondRules | None:
         frozenset(relation),
         tuple(cation_rules),
         tuple(anion_rules),
+        tuple(sorted((pair, cut[0]) for pair, cut in relation.items())),
     )
 
 
@@ -525,12 +527,30 @@ def objective_constraints(config: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Work limits of one feasibility decision. An instance that exceeds them is
+# kept (not pruned): the check may only drop what it has proven infeasible.
+_MAX_ROWS = 20000
+_MAX_NODES = 200000
+
+
+class _Undecided(Exception):
+    pass
+
+
 def _feasible(
     orbits, rules: BondRules, allowed: Callable[[int, int, int], tuple[int, ...]]
 ) -> bool:
     """Whether integer bond counts n_ij exist for `orbits` [(element,
     multiplicity)] meeting every rule, n_ij drawn from allowed(i, j, cap),
-    each a multiple of m_j / gcd(m_i, m_j), and n_ji = n_ij m_i / m_j."""
+    each a multiple of m_j / gcd(m_i, m_j), and n_ji = n_ij m_i / m_j.
+    True also when the search exceeds its work limits undecided."""
+    try:
+        return _search_counts(orbits, rules, allowed)
+    except _Undecided:
+        return True
+
+
+def _search_counts(orbits, rules: BondRules, allowed) -> bool:
     by_cation: dict[str, list[CountRule]] = {}
     for r in rules.cation_rules:
         by_cation.setdefault(r.centre, []).append(r)
@@ -548,25 +568,31 @@ def _feasible(
         e_i = orbits[i][0]
         crules = by_cation[e_i]
         partners = [j for j in an if (e_i, orbits[j][0]) in rules.pairs]
-        caps = [
-            min(r.hi for r in crules if orbits[j][0] in r.partners) for j in partners
+        member = [[orbits[j][0] in r.partners for r in crules] for j in partners]
+        options = [
+            allowed(i, j, min(r.hi for r, m in zip(crules, mem) if m))
+            for j, mem in zip(partners, member)
         ]
         rows = []
-        for combo in product(*(allowed(i, j, cap) for j, cap in zip(partners, caps))):
-            sums = [
-                sum(n for j, n in zip(partners, combo) if orbits[j][0] in r.partners)
-                for r in crules
-            ]
-            if all(
-                (r.lo is None or s >= r.lo) and s <= r.hi for r, s in zip(crules, sums)
-            ):
-                rows.append(
-                    [
-                        (j, n * orbits[i][1] // orbits[j][1])
-                        for j, n in zip(partners, combo)
-                        if n
-                    ]
-                )
+
+        def extend(k: int, sums: list[int], row: list) -> None:
+            if k == len(partners):
+                if all(r.lo is None or s >= r.lo for r, s in zip(crules, sums)):
+                    rows.append(list(row))
+                    if len(rows) > _MAX_ROWS:
+                        raise _Undecided
+                return
+            for n in options[k]:
+                new = [s + n * m for s, m in zip(sums, member[k])]
+                if any(s > r.hi for r, s in zip(crules, new)):
+                    break                       # options ascend: larger n only overshoots
+                if n:
+                    row.append((partners[k], n * orbits[i][1] // orbits[partners[k]][1]))
+                extend(k + 1, new, row)
+                if n:
+                    row.pop()
+
+        extend(0, [0] * len(crules), [])
         if not rows:
             return False
         rows_of.append((e_i, rows))
@@ -579,24 +605,61 @@ def _feasible(
     for k, (j, _) in enumerate(checks):
         index.setdefault(j, []).append(k)
 
+    def contribution(e_i: str, row) -> list[int]:
+        out = [0] * len(checks)
+        for j, n_ji in row:
+            for k in index.get(j, ()):
+                if e_i in checks[k][1].partners:
+                    out[k] += n_ji
+        return out
+
+    levels = [(e_i, [contribution(e_i, row) for row in rows]) for e_i, rows in rows_of]
+    # The most each check can still gain from the levels below a given one,
+    # to cut branches whose lower bounds are already out of reach.
+    reach = [[0] * len(checks)]
+    for _, contribs in reversed(levels):
+        best = [max(c[k] for c in contribs) for k in range(len(checks))]
+        reach.append([a + b for a, b in zip(reach[-1], best)])
+    reach.reverse()
+    nodes = [0]
+
     def search(level: int, sums: list[int]) -> bool:
-        if level == len(rows_of):
-            return all(r.lo is None or s >= r.lo for (_, r), s in zip(checks, sums))
-        e_i, rows = rows_of[level]
-        for row in rows:
-            new = list(sums)
-            ok = True
-            for j, n_ji in row:
-                for k in index.get(j, ()):
-                    r = checks[k][1]
-                    if e_i in r.partners:
-                        new[k] += n_ji
-                        ok = ok and (r.hi is None or new[k] <= r.hi)
-            if ok and search(level + 1, new):
-                return True
+        nodes[0] += 1
+        if nodes[0] > _MAX_NODES:
+            raise _Undecided
+        if any(
+            r.lo is not None and s + g < r.lo
+            for (_, r), s, g in zip(checks, sums, reach[level])
+        ):
+            return False
+        if level == len(levels):
+            return True
+        for c in levels[level][1]:
+            new = [s + x for s, x in zip(sums, c)]
+            if all(r.hi is None or s <= r.hi for (_, r), s in zip(checks, new)):
+                if search(level + 1, new):
+                    return True
         return False
 
     return search(0, [0] * len(checks))
+
+
+@cache
+def _multiplicities(sg: int) -> dict[str, int]:
+    return {e.letter: e.multiplicity for e in WYCKOFF_DB[sg]}
+
+
+@cache
+def _balanced_counts(m_i: int, m_j: int, cap: int) -> tuple[int, ...]:
+    """Condition 1's bond counts n <= cap: n m_i / m_j an integer."""
+    return tuple(n for n in range(cap + 1) if (n * m_i) % m_j == 0)
+
+
+@cache
+def _symmetric_counts(sg: int, li: str, lj: str, representative: bool, cap: int) -> tuple[int, ...]:
+    """Condition 2's bond counts n <= cap from `li` to `lj`."""
+    orders = (_representative_bond_orders if representative else bond_stabiliser_orders)(sg, li, lj)
+    return _semigroup_counts(orders, site_symmetry(sg, li).order, cap)
 
 
 @dataclass
@@ -611,6 +674,7 @@ class BondCountCheck:
     elements: list[str]
     site_symmetry: bool = True
     _cache: dict[tuple, str | None] = field(default_factory=dict, repr=False)
+    _feasible_cache: dict[tuple, bool] = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_config(
@@ -685,27 +749,31 @@ class BondCountCheck:
 
     def _decide(self, sites, rules: BondRules, representative: bool) -> str | None:
         sg = self.sg
-        mult = {e.letter: e.multiplicity for e in WYCKOFF_DB[sg]}
-        orbits = [(el, mult[le]) for el, le in sites]
-
-        def balanced(i, j, cap):
-            mi, mj = orbits[i][1], orbits[j][1]
-            return tuple(n for n in range(cap + 1) if (n * mi) % mj == 0)
-
-        if not _feasible(orbits, rules, balanced):
+        mult = _multiplicities(sg)
+        # Ordered by (element, multiplicity) so assignments that differ only
+        # in letters of equal multiplicity share the balance decision.
+        sites = sorted(sites, key=lambda s: (s[0], mult[s[1]], s[1]))
+        orbits = tuple((el, mult[le]) for el, le in sites)
+        cap = max(r.hi for r in rules.cation_rules)
+        pairs = [(i, j) for i, (c, _) in enumerate(orbits)
+                 for j, (a, _) in enumerate(orbits) if (c, a) in rules.pairs]
+        balanced = {(i, j): _balanced_counts(orbits[i][1], orbits[j][1], cap) for i, j in pairs}
+        if not self._counts_feasible(rules, orbits, balanced):
             return BALANCE
         if not self.site_symmetry:
             return None
-        orders = (
-            _representative_bond_orders if representative else bond_stabiliser_orders
-        )
-
-        def symmetric(i, j, cap):
-            li, lj = sites[i][1], sites[j][1]
-            return _semigroup_counts(
-                orders(sg, li, lj), site_symmetry(sg, li).order, cap
-            )
-
-        if not _feasible(orbits, rules, symmetric):
+        symmetric = {(i, j): _symmetric_counts(sg, sites[i][1], sites[j][1], representative, cap)
+                     for i, j in pairs}
+        # Condition 2's counts are a subset of condition 1's; equal sets
+        # decide alike.
+        if symmetric != balanced and not self._counts_feasible(rules, orbits, symmetric):
             return SITE_SYMMETRY
         return None
+
+    def _counts_feasible(self, rules: BondRules, orbits, allowed: dict) -> bool:
+        key = (id(rules), orbits, tuple(sorted(allowed.items())))
+        if key not in self._feasible_cache:
+            self._feasible_cache[key] = _feasible(
+                list(orbits), rules,
+                lambda i, j, c: tuple(n for n in allowed[(i, j)] if n <= c))
+        return self._feasible_cache[key]
