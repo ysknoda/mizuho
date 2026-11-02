@@ -147,7 +147,7 @@ pair). MACE labels by the runs/alon class numbering (runs/alon/mlip).
     every CMA-ES trajectory): 38 new classes appear, mostly MACE saddles at 122-1,290 meV/atom
     where labelled. No baseline rerun separates that noise here (a second baseline run of each
     group would; ~2 h each on 1 worker).
-- SG 189 and SG 166 were not run (about 6 and 14 h on 1 worker; the cores were busy).
+- SG 189 and SG 166 were not run: with the terms opt-in, not needed (decision 2026-11-02).
 
 **Decided (2026-11-02): opt-in, off by default.** The terms remove what they were derived to
 remove and cost nothing at any reference, but on this pilot they shrink the low-energy share
