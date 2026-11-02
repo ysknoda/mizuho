@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from ..composition import _all_charges_zero, parse_composition
 from ..data import WYCKOFF_DB, WyckoffEntry
 from ..structure import SiteAssignment
+from .bond_counting import BondCountCheck
 
 
 @dataclass
@@ -62,6 +63,11 @@ class AssignmentProblem:
     # composition is an output of each accepted leaf instead of an input.
     require_all_elements: bool = True
 
+    # Exact bond-counting pruning (ADR-0037): rejects accepted leaves no
+    # coordinates can bring to zero error. None when switched off
+    # (`tree_search.bond_count_pruning: false`) or nothing can be pruned.
+    bond_check: Optional[BondCountCheck] = None
+
     @property
     def composition_free(self) -> bool:
         return self.composition is None
@@ -99,7 +105,7 @@ class AssignmentProblem:
         else:
             max_q_per_atom = 0
 
-        return cls(
+        problem = cls(
             sg=sg,
             composition=composition,
             elements=elements,
@@ -114,6 +120,8 @@ class AssignmentProblem:
             max_atoms_per_fu=max_atoms_per_fu,
             max_q_per_atom=max_q_per_atom,
         )
+        problem.bond_check = BondCountCheck.from_config(config, elements, composition_free=False)
+        return problem
 
     @classmethod
     def _composition_free_from_config(cls, config: dict) -> "AssignmentProblem":
@@ -146,7 +154,7 @@ class AssignmentProblem:
             if key in ts_cfg:
                 raise ValueError(f"tree_search.{key} does not apply without a "
                                  "composition; tree_search.max_atoms bounds the cell")
-        return cls(
+        problem = cls(
             sg=sg,
             composition=None,
             elements=elements,
@@ -162,6 +170,8 @@ class AssignmentProblem:
             max_q_per_atom=max(abs(ionic_q[e]) for e in elements),
             require_all_elements=ts_cfg.get("require_all_elements", True),
         )
+        problem.bond_check = BondCountCheck.from_config(config, elements, composition_free=True)
+        return problem
 
 
 @dataclass
@@ -307,7 +317,8 @@ def _counts_admissible(problem: AssignmentProblem, new_counts: Dict[str, int],
 
 
 def _leaf_status(problem: AssignmentProblem, new_counts: Dict[str, int],
-                 new_charge: float) -> Tuple[bool, bool]:
+                 new_charge: float,
+                 assignment: Optional[List[SiteAssignment]] = None) -> Tuple[bool, bool]:
     """(accepted, stop): whether the node is a valid assignment, and whether
     the search stops expanding it.
 
@@ -316,7 +327,20 @@ def _leaf_status(problem: AssignmentProblem, new_counts: Dict[str, int],
     charge-neutral within the tolerance and holds every element (unless
     `tree_search.require_all_elements` is false), and it is expanded
     further regardless: a neutral cell plus more sites can be neutral
-    again, a larger cell of another composition or of the same one."""
+    again, a larger cell of another composition or of the same one.
+
+    Given the node's `assignment` (representative letters), a leaf that
+    problem.bond_check rejects is not accepted; whether it is expanded
+    further does not change (ADR-0037)."""
+    accepted, stop = _charge_leaf_status(problem, new_counts, new_charge)
+    if accepted and assignment is not None and problem.bond_check is not None:
+        accepted = problem.bond_check.accepts(assignment, representative=True)
+    return accepted, stop
+
+
+def _charge_leaf_status(problem: AssignmentProblem, new_counts: Dict[str, int],
+                        new_charge: float) -> Tuple[bool, bool]:
+    """_leaf_status without the bond-counting check."""
     if problem.composition_free:
         present = (all(new_counts.get(e, 0) > 0 for e in problem.elements)
                    if problem.require_all_elements else bool(new_counts))

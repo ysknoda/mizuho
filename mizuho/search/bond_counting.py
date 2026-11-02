@@ -398,12 +398,13 @@ def _escape_down(x: float, windows) -> float:
 
 
 def _escape_up(x: float, windows) -> float:
-    """A lower bound of the distances >= x outside every forbidden window."""
+    """A lower bound of the distances >= x outside every forbidden window
+    (contacts in (lo, hi] lie beyond hi)."""
     moved = True
     while moved:
         moved = False
         for lo, hi in windows:
-            if lo < x <= hi:
+            if lo < x < hi:
                 x, moved = hi, True
     return x
 
