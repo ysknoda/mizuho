@@ -184,6 +184,10 @@ mode A; `mode` must agree with whether `spacegroup` is present:
    first, so a structure is reported in its highest group rather than in a
    subgroup that also reaches zero error
    ([ADR-0026](docs/adr/0026-exhaustive-spacegroup-strategy-and-symmetry-first-ranking.md)).
+   In an exhaustive run, a promotion to the detected group takes an
+   assignment the run has already optimised there from the run instead of
+   re-optimising it
+   ([ADR-0039](docs/adr/0039-promotion-reuses-the-exhaustive-runs-own-optimisations.md)).
 
 Once a space group is fixed (by either mode), the shared pipeline is:
 
