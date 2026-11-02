@@ -14,9 +14,9 @@ Al-Al >= 2.6 A) rejects class 7 and leaves corundum at 5.2e-4; this ADR derives 
 - **Which pairs.** Every anion pair present (like and mixed: O-O, N-N, N-O) and every cation pair
   (like and mixed) that some counter-ion bonds both of (`bonded_anions` respected). One
   `repulsion_constraints` entry each, weight 1.0, the existing one-sided term (energy.py
-  section 5). A repulsion the config states for a pair wins; `auto_repulsion: false` switches the
-  derived ones off and reproduces the previous objective exactly. A pair no counter-ion bonds
-  both of gets none.
+  section 5). **Opt-in:** only with `auto_repulsion: true` (default `false`, decided after the
+  pilot below); without it the objective is exactly the previous one. A repulsion the config
+  states for a pair wins. A pair no counter-ion bonds both of gets none.
 - **Distance (the rule).** Two ions A, B bonded to one shared ion C, by bonds no shorter than
   their bands' short ends a = d_min(A-C), b = d_min(B-C), at an angle of at least theta at C, are
   at least
@@ -83,7 +83,7 @@ with a homonuclear polyanion (S2, peroxide O2, azide N3, C2) must state a repuls
 or switch the derived ones off: composition and charges do not tell such a pair apart. One rule
 does not cover it, and no rule was tuned to.
 
-**`mizuho check` and the gate, before (HEAD) and after,** every fixture with a reference
+**`mizuho check` and the gate, before (HEAD) and after with the terms on,** every fixture with a reference
 structure: unchanged to the printed digit, apart from pyrite's derived score. Hand fixtures (no
 `coordination_numbers`) are untouched by construction. The auto fixtures: ZnO on wurtzite.cif 0,
 anatase on anatase_origin1/2.cif 8.3e-3 / 0, rutile (a 4.594, c 2.959, x 0.3049) 0. The Al-O-N
@@ -149,16 +149,15 @@ pair). MACE labels by the runs/alon class numbering (runs/alon/mlip).
     group would; ~2 h each on 1 worker).
 - SG 189 and SG 166 were not run (about 6 and 14 h on 1 worker; the cores were busy).
 
-**Open: the default.** The terms remove what they were derived to remove and cost nothing at any
-reference, but on this pilot they shrink the low-energy share rather than raise it (low-energy
-classes 6 -> 1, picks 5 -> 1). Whether `auto_repulsion` stays on by default, or becomes opt-in
-for searches whose output goes to an MLIP relaxation anyway, is left to the design review; the
-code here ships it on, as the task asked.
+**Decided (2026-11-02): opt-in, off by default.** The terms remove what they were derived to
+remove and cost nothing at any reference, but on this pilot they shrink the low-energy share
+rather than raise it (low-energy classes 6 -> 1, picks 5 -> 1). `auto_repulsion: true` turns them
+on, e.g. where the zero-error structures themselves are the output, without an MLIP relaxation.
 
 ## Consequences
 
-- Every config with `coordination_numbers` gains these entries. Runs before and after are
-  comparable only with `auto_repulsion: false`.
+- Off by default, so existing configs and runs are unchanged; every measurement above was made
+  with `auto_repulsion: true`.
 - `init_guess.py` reads repulsion distance_min for its cell floor, but only as 0.6 d_min against
   the largest bond distance_max; at the default floors (theta <= 90 deg) the derived d_min is at
   most sqrt(2) times a band's short end, so 0.6 d_min stays below the bond term and starting

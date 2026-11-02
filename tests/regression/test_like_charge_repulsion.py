@@ -36,16 +36,16 @@ def _rep(bd, pair):
 
 def test_nitrate_like_contact_is_rejected():
     cif = f"{REG}/alon_class_07_sg157.cif"
-    assert _score(cif, "Al5O3N3", auto_repulsion=False)["total"] < 1e-6
-    bd = _score(cif, "Al5O3N3")
+    assert _score(cif, "Al5O3N3")["total"] < 1e-6
+    bd = _score(cif, "Al5O3N3", auto_repulsion=True)
     assert _rep(bd, "N-O") > 0.1
     assert bd["total"] > 0.1
 
 
 def test_al_al_at_the_hard_sphere_limit_is_rejected():
     cif = f"{REG}/alon_class_241_sg81.cif"
-    assert _score(cif, "Al6O3N4", auto_repulsion=False)["total"] < 1e-3
-    bd = _score(cif, "Al6O3N4")
+    assert _score(cif, "Al6O3N4")["total"] < 1e-3
+    bd = _score(cif, "Al6O3N4", auto_repulsion=True)
     assert _rep(bd, "Al-Al") > 0.05
     assert bd["total"] > 0.1
 
@@ -57,8 +57,8 @@ def test_al_al_at_the_hard_sphere_limit_is_rejected():
 def test_end_member_scores_are_unchanged(cif, composition, expected):
     """Corundum's face-sharing Al-Al (2.655 A) and shared-face O-O (2.526 A)
     are the tight cases; neither term acts on them."""
-    bd = _score(cif, composition)
+    bd = _score(cif, composition, auto_repulsion=True)
     assert all(r["penalty"] == 0.0 for r in bd["repulsion"])
     assert bd["total"] == pytest.approx(expected, rel=1e-3)
-    assert bd["total"] == pytest.approx(_score(cif, composition, auto_repulsion=False)["total"],
+    assert bd["total"] == pytest.approx(_score(cif, composition)["total"],
                                         abs=1e-12)

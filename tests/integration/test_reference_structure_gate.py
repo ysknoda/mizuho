@@ -375,7 +375,7 @@ def test_derived_like_charge_repulsion_is_zero_at_the_reference(name):
     ref = _REFS[name]
     _, pv, asg = ref.build()
     base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
-    full = dict(build_sg_config(_minimal_config(base), ref.sg))
+    full = dict(build_sg_config(dict(_minimal_config(base), auto_repulsion=True), ref.sg))
     full["wyckoff_sites"] = assignments_to_sites(asg)
     assert full["repulsion_constraints"]
     bd = error_breakdown(pv, full)

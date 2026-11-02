@@ -41,7 +41,8 @@ structure used to supply is derived from that:
   sits at HBOND_MIN_ANGLE or more from the O-H bond (ADR-0028 (b)).
   `auto_hydrogen_bond: false` switches it off.
 
-- Like-charge minimum distances (ADR-0037): for every anion pair and
+- Optionally, with `auto_repulsion: true` (off by default; ADR-0037),
+  like-charge minimum distances: for every anion pair and
   every cation pair present, a `repulsion_constraints` entry at the
   shortest distance two ions bonded to one shared counter-ion C can have
   inside the derived constraints: both bonds at their band's short end
@@ -53,8 +54,7 @@ structure used to supply is derived from that:
   band's lower bound (auto_coupling_angle_range, 80 deg), or
   UNBANDED_ANGLE_FLOOR where no band covers the pair (H, or the band
   switched off). A pair no counter-ion bonds both of gets none.
-  `auto_repulsion: false` switches them off; a repulsion the config states
-  for a pair wins.
+  A repulsion the config states for a pair wins.
 
 A constraint the config already states for the same pair wins.
 """
@@ -385,7 +385,9 @@ def derive_constraints(config: dict) -> dict:
         bv["tolerance"] = tol
         out["bond_valence"] = bv
     out["bond_constraints"] = bonds
-    if config.get("auto_repulsion", True) is not False:
+    # Opt-in (ADR-0037): on the Al-O-N pilot they removed the short contacts
+    # but not in favour of the MLIP-low-energy classes.
+    if config.get("auto_repulsion", False) is True:
         cations = sorted(c for c in cns if c in present)
         stated_rep = {frozenset((r["atom1"], r["atom2"]))
                       for r in config.get("repulsion_constraints", [])
