@@ -114,7 +114,46 @@ that are merely unusual.
 
 ## Measured: pilot search
 
-PILOT_PLACEHOLDER
+Runs/alon/alon.yaml restricted to one space group, 1 worker (the Mac's other cores ran VASP),
+with the derived terms; the baseline is the same group's record in runs/alon/alon.jsonl (same
+mizuho/ code, commit 2e4e88c, same seed). Classes: export_classes over each record (error
+<= 1e-3); distances on the exported, symmetrised CIFs (`Al-Al`, and anion-anion over every anion
+pair). MACE labels by the runs/alon class numbering (runs/alon/mlip).
+
+| | SG 157 base | SG 157 with | SG 59 base | SG 59 with |
+|---|---|---|---|---|
+| zero-error classes | 26 | 15 (6 common, 9 new) | 74 | 58 (29 common, 29 new) |
+| shortest anion-anion, min / median (A) | 1.300 / 1.712 | 2.007 / 2.095 | 1.300 / 1.668 | 1.994 / 2.093 |
+| classes with anion-anion < 2.0 A | 22 | 0 | 55 | 1 (1.994) |
+| shortest Al-Al, min / median (A) | 1.687 / 2.436 | 2.252 / 2.482 | 1.561 / 2.417 | 2.234 / 2.474 |
+| MACE <= 100 meV/atom (stage-1 picks) | 1 (0) | 0 | 5 (3) | 1 (1) |
+| stage-1 picks, all | 2 | 0 | 3 | 1 |
+| MACE-excluded for anion-anion < 2.0 A | 3 | 1 | 11 | 5 |
+| wall time, 1 worker | (815 s on 6) | 7,536 s | (725 s on 6) | 7,663 s |
+
+- The terms do what they are for: no class leaves mizuho with an anion pair or an Al-Al pair
+  below the derived minima (the 1.994 and 2.234 A are 1 % below them, inside the soft term's
+  1e-3 threshold, after symmetrisation). The distances pile up at the minima (median
+  anion-anion 2.09 A): the one-sided term holds the contacts at its bound, it does not push them
+  to the 2.4-2.6 A of relaxed structures.
+- They do not select for MACE energy. Of the 6 baseline classes within 100 meV/atom, 1 is found
+  (Al4O3N2 class 635, 65 meV, a pick); lost are Al3O3N classes 48 (85 meV), 118 (69, pick), 129
+  (98), 131 (66, pick) and Al4O3N2 class 394 (79). Of the 5 picks in the two groups, 1 remains.
+  6 of 14 classes MACE excluded for anion-anion contacts are still found: their zero-error points
+  now keep 2.0 A, and MACE still collapses them.
+  - This agrees with the measurement on claude/modest-swirles-7b56e6 (an anion-anion 2.3 A term
+    removed low- and high-energy classes alike).
+  - Part of the class turnover is the search's own path dependence (a changed objective changes
+    every CMA-ES trajectory): 38 new classes appear, mostly MACE saddles at 122-1,290 meV/atom
+    where labelled. No baseline rerun separates that noise here (a second baseline run of each
+    group would; ~2 h each on 1 worker).
+- SG 189 and SG 166 were not run (about 6 and 14 h on 1 worker; the cores were busy).
+
+**Open: the default.** The terms remove what they were derived to remove and cost nothing at any
+reference, but on this pilot they shrink the low-energy share rather than raise it (low-energy
+classes 6 -> 1, picks 5 -> 1). Whether `auto_repulsion` stays on by default, or becomes opt-in
+for searches whose output goes to an MLIP relaxation anyway, is left to the design review; the
+code here ships it on, as the task asked.
 
 ## Consequences
 
