@@ -63,6 +63,12 @@ within the primitive-cell atom bound is a leaf, and its reduced formula is its c
 (ADR-0033).
 _Avoid_: auto-composition (the removed mode that enumerated compositions first)
 
+**Bond-count pruning**:
+Phase 1 dropping a Wyckoff assignment for which no integer bond counts between its orbits meet
+the coordination ranges under orbit bond balance (m_i n_ij = m_j n_ji) and the site-symmetry
+orbit sizes: a proof that no coordinates reach zero error, not a heuristic (ADR-0037).
+_Avoid_: feasibility filter (reserved for the geometric ranking), heuristic pruning
+
 **Centring factor**:
 Lattice points per conventional cell (P 1, A/B/C/I 2, R 3, F 4). A Wyckoff multiplicity divided
 by it is an atom count in the primitive cell.
