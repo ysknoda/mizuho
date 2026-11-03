@@ -45,6 +45,22 @@ logger = logging.getLogger(__name__)
 # tolerance (an order below Stage 1's 1e-3 convergence margin).
 CENTRING_WEIGHT = 0.01
 CENTRING_TOLERANCE = 1e-4
+# optimization.centring: true (default) centres refined points at or below
+# topology_grouping.zero_error_threshold only, "all" every refined point (the
+# behaviour before ADR-0040), false none. Above the threshold centring was
+# never measured to help and never brought a point below it (ADR-0040).
+CENTRING_MODES = (True, False, "all")
+
+
+def centring_mode(opt_cfg: dict):
+    """Validated `optimization.centring`."""
+    mode = (opt_cfg or {}).get("centring", True)
+    if mode not in CENTRING_MODES or (mode in (0, 1) and not isinstance(mode, bool)):
+        raise ValueError(
+            "optimization.centring must be true, false or \"all\", "
+            f"got {mode!r}")
+    return mode
+
 
 _CORE_BACKENDS = {
     "cma": multistart_cma_es,
@@ -339,6 +355,10 @@ def optimize_assignment(
 
     topology_grouping : {zero_error_threshold, early_stop, early_stop_hits},
                      see optimize.endpoints (defaults: 1e-3, true, 2)
+    centring       : true centres each refined point at or below
+                     zero_error_threshold inside the derived bond bands
+                     (ADR-0028 (c), ADR-0040); "all" every refined point;
+                     false none                            (default: true)
 
     `shell_seed_info`, if given, is the {group_index: best_param_vector}
     dict geometry.rank_by_feasibility already computed while ranking
@@ -437,14 +457,16 @@ def optimize_assignment(
             "notes) -- remove hybridisation_constraints from this "
             "config or set refine_jac: false")
 
-    # Centring inside the derived bond bands (ADR-0028 (c)): on by default,
-    # a no-op for configs without derived bonds.
-    centring_cfg = (ideal_bond_config(cfg)
-                    if opt_cfg.get("centring", True) is not False else None)
+    # Centring inside the derived bond bands (ADR-0028 (c)): on by default
+    # for zero-error points (ADR-0040), a no-op for configs without derived
+    # bonds.
+    centring = centring_mode(opt_cfg)
+    centring_cfg = ideal_bond_config(cfg) if centring is not False else None
 
     # Validated before the try below, like refine_jac: a bad
     # topology_grouping block is a configuration error, not a failed run.
     ledger = EndpointLedger(cfg, grouping_settings(opt_cfg))
+    centre_max_error = ledger.threshold if centring != "all" else np.inf
 
     try:
         # Stage 1: multi-start global search (backend-selectable). Every
@@ -501,7 +523,7 @@ def optimize_assignment(
         for x0, f0 in reps:
             p, e = _stage2(obj, cfg, x0, f0, bounds, refine_methods, refine_max,
                            refine_ftol, refine_jac, verbose, label)
-            if centring_cfg is not None:
+            if centring_cfg is not None and e <= centre_max_error:
                 p, e = _centre(obj, cfg, centring_cfg, p, e, bounds, refine_max,
                                refine_ftol, verbose)
             key = topology_key(p, cfg) if ledger.enabled else None
