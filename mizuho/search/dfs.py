@@ -150,7 +150,7 @@ class ExhaustiveDFSStrategy(SearchStrategy):
                     new_assignments = node.assignments + [SiteAssignment(elem, wentry)]
                     new_node = TreeNode(new_assignments, new_charge, new_atoms)
 
-                    accepted, stop = _leaf_status(problem, new_counts, new_charge)
+                    accepted, stop = _leaf_status(problem, new_counts, new_charge, new_assignments)
                     if accepted:
                         canon = _canonical_label(new_assignments)
                         if canon not in seen_labels:
@@ -244,6 +244,10 @@ def wyckoff_tree_search(
             # Two sites on one fixed point are two atoms on top of each
             # other; dropped in the composition-free search (ADR-0033).
             if problem.composition_free and has_fixed_overlap(concrete):
+                continue
+            # Representative leaves passed with each site's letters united;
+            # each concrete letter choice is checked on its own (ADR-0037).
+            if problem.bond_check is not None and not problem.bond_check.accepts(concrete):
                 continue
             canon = _canonical_label(concrete)
             if canon not in seen_labels:

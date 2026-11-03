@@ -140,7 +140,7 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
                 new_assignments = node.assignments + [SiteAssignment(elem, wentry)]
                 new_node = TreeNode(new_assignments, new_charge, new_atoms)
 
-                accepted, stop = _leaf_status(problem, new_counts, new_charge)
+                accepted, stop = _leaf_status(problem, new_counts, new_charge, new_assignments)
                 if accepted:
                     canon = _canonical_label(new_assignments)
                     if canon not in seen_labels:

@@ -180,3 +180,108 @@ def test_anion_coordination_numbers_split_the_combined_range():
 def test_anion_coordination_numbers_names_anions_only():
     with pytest.raises(ValueError, match="not anions"):
         derive_constraints(_alon(anion_coordination_numbers={"Al": 4}))
+
+
+# ---------------------------------------------------------------------------
+# ADR-0040: like-charge minimum distances
+# ---------------------------------------------------------------------------
+
+def _repulsions(out):
+    return {frozenset((r["atom1"], r["atom2"])): r["distance_min"]
+            for r in out.get("repulsion_constraints", [])}
+
+
+def test_shared_ion_distance_is_the_minimum_over_longer_bonds_and_wider_angles():
+    """Brute force over bonds no shorter than a, b and angles no smaller
+    than theta: the closed form is that grid's minimum, never above it."""
+    import numpy as np
+    from mizuho.constraints import _shared_ion_distance
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        a, b = rng.uniform(0.8, 2.6, 2)
+        theta = rng.uniform(50.0, 120.0)
+        d1 = np.linspace(a, a + 3, 301)[:, None, None]
+        d2 = np.linspace(b, b + 3, 301)[None, :, None]
+        t = np.radians(np.linspace(theta, 180.0, 61))[None, None, :]
+        grid = np.sqrt(d1 ** 2 + d2 ** 2 - 2 * d1 * d2 * np.cos(t)).min()
+        got = _shared_ion_distance(a, b, theta)
+        assert got <= grid + 1e-9
+        assert got == pytest.approx(grid, abs=2e-3)
+
+
+def test_every_like_charge_pair_gets_a_derived_repulsion():
+    """Al-O-N (Al3O3N): O-O, N-O, N-N through Al (CN up to 6: 90 - 20 = 70 deg) and
+    Al-Al through either anion (the auto anion band's 80 deg), both bonds
+    at their band's short end."""
+    out = derive_constraints(_alon(auto_repulsion=True))
+    reps = _repulsions(out)
+    assert set(reps) == {frozenset(p) for p in (("O",), ("N",), ("N", "O"), ("Al",))}
+    short = {b["atom2"]: b["distance_min"] for b in out["bond_constraints"]}
+    s70, s80 = math.sin(math.radians(35.0)), math.sin(math.radians(40.0))
+    assert reps[frozenset(("O",))] == pytest.approx(2 * short["O"] * s70, abs=1e-3)
+    assert reps[frozenset(("N",))] == pytest.approx(2 * short["N"] * s70, abs=1e-3)
+    a, b, c = short["N"], short["O"], math.cos(math.radians(70.0))
+    assert reps[frozenset(("N", "O"))] == pytest.approx(math.sqrt(a * a + b * b - 2 * a * b * c),
+                                                       abs=1e-3)
+    # the smaller of the two shared anions' bounds: O, whose Al-O bond is shorter
+    assert reps[frozenset(("Al",))] == pytest.approx(2 * min(short.values()) * s80, abs=1e-3)
+
+
+def test_mixed_cation_pairs_and_cn_specific_angle_floors():
+    """Forsterite: Mg-Mg, Mg-Si, Si-Si through O at 80 deg; O-O at the
+    weaker of Si (CN 4: 109.47 - 20) and Mg (CN 6: 90 - 20)."""
+    out = derive_constraints(_silicate(auto_repulsion=True))
+    reps = _repulsions(out)
+    assert set(reps) == {frozenset(p) for p in (("O",), ("Mg",), ("Si",), ("Mg", "Si"))}
+    short = {b["atom1"]: b["distance_min"] for b in out["bond_constraints"]}
+    oo = min(2 * short["Si"] * math.sin(math.radians(89.47 / 2)),
+             2 * short["Mg"] * math.sin(math.radians(35.0)))
+    assert reps[frozenset(("O",))] == pytest.approx(oo, abs=1e-3)
+    a, b, c = short["Mg"], short["Si"], math.cos(math.radians(80.0))
+    assert reps[frozenset(("Mg", "Si"))] == pytest.approx(math.sqrt(a * a + b * b - 2 * a * b * c),
+                                                         abs=1e-3)
+
+
+def test_a_stated_repulsion_wins_for_its_pair_only():
+    stated = {"atom1": "O", "atom2": "N", "distance_min": 2.4, "weight": 1.0}
+    out = derive_constraints(_alon(auto_repulsion=True, repulsion_constraints=[stated]))
+    no = [r for r in out["repulsion_constraints"] if {r["atom1"], r["atom2"]} == {"N", "O"}]
+    assert no == [stated]
+    assert {frozenset((r["atom1"], r["atom2"])) for r in out["repulsion_constraints"]} == \
+        {frozenset(p) for p in (("O",), ("N",), ("N", "O"), ("Al",))}
+
+
+def test_repulsions_are_opt_in():
+    assert "repulsion_constraints" not in derive_constraints(_alon())
+    assert "repulsion_constraints" not in derive_constraints(_alon(auto_repulsion=False))
+    stated = [{"atom1": "Al", "atom2": "Al", "distance_min": 2.6}]
+    out = derive_constraints(_alon(repulsion_constraints=stated))
+    assert out["repulsion_constraints"] == stated
+
+
+def test_anion_band_settings_set_the_cation_angle_floor():
+    """The cation-cation floor follows the anion-centred band: its lower
+    bound when overridden, 60 deg when the band is switched off."""
+    short = min(b["distance_min"] for b in derive_constraints(_alon(auto_repulsion=True))["bond_constraints"])
+    for extra, angle in (({"auto_coupling_angle_range": [90.0, 160.0]}, 90.0),
+                         ({"auto_anion_coupling_angle": False}, 60.0)):
+        reps = _repulsions(derive_constraints(_alon(auto_repulsion=True, **extra)))
+        assert reps[frozenset(("Al",))] == pytest.approx(
+            2 * short * math.sin(math.radians(angle / 2)), abs=1e-3)
+
+
+def test_hydrogen_pairs_meet_at_the_unbanded_floor_and_no_anion_pair_meets_at_h():
+    """H at CN 1 bonds one anion, so no anion pair is bounded through it;
+    the auto anion band names the framework cations only, so pairs with H
+    take the 60 deg floor."""
+    from mizuho.constraints import _shared_ion_distance
+    cfg = {"composition": "Zn2AsO5H", "ionic_charges": {"Zn": 2, "As": 5, "O": -2, "H": 1},
+           "coordination_numbers": {"Zn": [5, 6], "As": 4, "H": 1}, "auto_repulsion": True}
+    out = derive_constraints(cfg)
+    reps = _repulsions(out)
+    short = {b["atom1"]: b["distance_min"] for b in out["bond_constraints"]}
+    assert reps[frozenset(("H", "Zn"))] == pytest.approx(
+        _shared_ion_distance(short["H"], short["Zn"], 60.0), abs=1e-3)
+    assert reps[frozenset(("O",))] == pytest.approx(
+        min(2 * short["As"] * math.sin(math.radians(89.47 / 2)),
+            2 * short["Zn"] * math.sin(math.radians(35.0))), abs=1e-3)

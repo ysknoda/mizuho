@@ -24,7 +24,8 @@ from .optimize.driver import optimize_one_assignment
 from .optimize.endpoints import grouping_settings
 from .pipeline import (
     _run_composition_pool, build_sg_config,
-    class_descriptors, merge_same_topology, optimise_candidates, promote_to_detected_supergroup,
+    best_entry_per_assignment, class_descriptors, merge_same_topology, optimise_candidates,
+    promote_to_detected_supergroup,
     search_and_rank, search_and_rank_compositions,
 )
 from .search import auto_search_spacegroups
@@ -450,7 +451,12 @@ def _cmd_run(args) -> None:
 
     # A structure whose detected symmetry is higher than the group it was
     # optimised in is re-expressed and re-optimised there (ADR-0010),
-    # repeatedly, since the re-optimised structure may climb further.
+    # repeatedly, since the re-optimised structure may climb further. An
+    # exhaustive run has already optimised most of those assignments in the
+    # detected group; their entries stand in for the re-optimisation
+    # (ADR-0038).
+    optimised = (best_entry_per_assignment(all_results)
+                 if auto_mode and _sg_strategy(config) == "exhaustive" else None)
     promoted = []
     for entry in all_results:
         err, sg, asgn, best_p, structure, sg_config = entry
@@ -458,7 +464,8 @@ def _cmd_run(args) -> None:
             if structure is None:
                 break
             up = promote_to_detected_supergroup(sg, best_p, structure, sg_config, config,
-                                                opt_cfg, SUCCESS_TOLERANCE, verbose=True)
+                                                opt_cfg, SUCCESS_TOLERANCE, verbose=True,
+                                                optimised=optimised)
             if up is None:
                 break
             err, sg, asgn, best_p, structure, sg_config = up

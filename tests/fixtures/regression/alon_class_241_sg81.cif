@@ -1,0 +1,36 @@
+# class_241_sg81 N4O3Al6 P-4 (from run alon, optimised in SG 81, error 6.2e-05)
+# idealised by spglib at 0.001 A; standard conventional cell
+data_class_241_sg81
+_chemical_formula_sum 'N4 O3 Al6'
+_space_group_name_H-M_alt 'P-4'
+_space_group_IT_number 81
+_space_group_name_Hall 'P -4'
+_cell_length_a 5.739540
+_cell_length_b 5.739540
+_cell_length_c 3.476131
+_cell_angle_alpha 90.0000
+_cell_angle_beta 90.0000
+_cell_angle_gamma 90.0000
+_cell_volume 114.5118
+_cell_formula_units_Z 1
+loop_
+_space_group_symop_id
+_space_group_symop_operation_xyz
+1 x,y,z
+2 y,-x,-z
+3 -x,-y,z
+4 -y,x,-z
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_symmetry_multiplicity
+_atom_site_Wyckoff_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+N1 N 4 h 0.13692500 0.22041067 0.49999836 1.0
+O1 O 1 c 0.50000000 0.50000000 0.00000000 1.0
+O2 O 2 g 0.00000000 0.50000000 0.74953590 1.0
+Al1 Al 2 e 0.00000000 0.00000000 0.14443568 1.0
+Al2 Al 4 h 0.63461720 0.22698849 0.00000053 1.0

@@ -1,0 +1,38 @@
+# class_07_sg157 N3O3Al5 P31m (from run alon, optimised in SG 157, error 9.6e-08)
+# idealised by spglib at 0.001 A; standard conventional cell
+data_class_07_sg157
+_chemical_formula_sum 'N3 O3 Al5'
+_space_group_name_H-M_alt 'P31m'
+_space_group_IT_number 157
+_space_group_name_Hall 'P 3 -2'
+_cell_length_a 5.118763
+_cell_length_b 5.118763
+_cell_length_c 4.771285
+_cell_angle_alpha 90.0000
+_cell_angle_beta 90.0000
+_cell_angle_gamma 120.0000
+_cell_volume 108.2670
+_cell_formula_units_Z 1
+loop_
+_space_group_symop_id
+_space_group_symop_operation_xyz
+1 x,y,z
+2 -y,x-y,z
+3 -x+y,-x,z
+4 y,x,z
+5 x-y,-y,z
+6 -x,-x+y,z
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_symmetry_multiplicity
+_atom_site_Wyckoff_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+N1 N 3 c 0.73763809 0.73763809 0.16106271 1.0
+O1 O 1 a 0.00000000 0.00000000 0.21749614 1.0
+O2 O 2 b 0.66666667 0.33333333 0.46253819 1.0
+Al1 Al 2 b 0.66666667 0.33333333 0.09063290 1.0
+Al2 Al 3 c 0.28609325 0.28609325 0.45095848 1.0

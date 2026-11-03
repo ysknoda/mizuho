@@ -63,6 +63,12 @@ within the primitive-cell atom bound is a leaf, and its reduced formula is its c
 (ADR-0033).
 _Avoid_: auto-composition (the removed mode that enumerated compositions first)
 
+**Bond-count pruning**:
+Phase 1 dropping a Wyckoff assignment for which no integer bond counts between its orbits meet
+the coordination ranges under orbit bond balance (m_i n_ij = m_j n_ji) and the site-symmetry
+orbit sizes: a proof that no coordinates reach zero error, not a heuristic (ADR-0037).
+_Avoid_: feasibility filter (reserved for the geometric ranking), heuristic pruning
+
 **Centring factor**:
 Lattice points per conventional cell (P 1, A/B/C/I 2, R 3, F 4). A Wyckoff multiplicity divided
 by it is an atom count in the primitive cell.
@@ -96,6 +102,13 @@ _Avoid_: ground truth, target structure, experimental data
 One named contribution to the total error (overlap, bond, angle, CN, repulsion, charge, volume,
 density, void, aspect ratio, cell validity, hybridisation).
 _Avoid_: energy term, cost component
+
+**Like-charge minimum**:
+The shortest distance two anions (or two cations) bonded to one shared counter-ion can have inside
+the derived bond bands and angle floors; derived as a repulsion constraint for every like-charge
+pair when `auto_repulsion: true` (opt-in, ADR-0040). A consequence of the bands, not a contact radius: homonuclear polyanions (the S2
+dimer in pyrite) fall below it and need the pair stated.
+_Avoid_: anion radius sum, exclusion distance
 
 **R_hole (largest empty sphere)**:
 The largest distance from a point of the cell to the nearest atom centre, no radii; the void
