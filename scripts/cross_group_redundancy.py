@@ -1,5 +1,5 @@
 """How much of an exhaustive run re-finds what a higher group already found
-(ADR-0039).
+(ADR-0038).
 
 Three measurements on an exhaustive run's record (`spacegroup_search.record`,
 one JSON line per finished group, written in run order, highest point-group

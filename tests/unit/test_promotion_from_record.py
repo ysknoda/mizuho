@@ -1,4 +1,4 @@
-"""Promotion from the run's own entries (ADR-0039).
+"""Promotion from the run's own entries (ADR-0038).
 
 An exhaustive run has optimised most assignments a promotion lands on; the
 entry it already holds stands in for the re-optimisation, and the
@@ -99,7 +99,7 @@ def test_assignment_not_in_the_run_is_still_reoptimised(monkeypatch):
 def test_recorded_entry_equals_reoptimisation_for_a_fixed_composition():
     """For a fixed-composition run the entry Phase 2 recorded for an
     assignment is bit-identical to what promotion's re-optimisation of that
-    assignment returns: the stand-in changes no result (ADR-0039)."""
+    assignment returns: the stand-in changes no result (ADR-0038)."""
     config = nacl_config()
     sg_config = build_sg_config(config, 225)
     valid, _, seeds = search_and_rank(sg_config, 50)

@@ -448,7 +448,7 @@ def _cmd_run(args) -> None:
     # repeatedly, since the re-optimised structure may climb further. An
     # exhaustive run has already optimised most of those assignments in the
     # detected group; their entries stand in for the re-optimisation
-    # (ADR-0039).
+    # (ADR-0038).
     optimised = (best_entry_per_assignment(all_results)
                  if auto_mode and _sg_strategy(config) == "exhaustive" else None)
     promoted = []

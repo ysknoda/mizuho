@@ -47,8 +47,8 @@ CENTRING_WEIGHT = 0.01
 CENTRING_TOLERANCE = 1e-4
 # optimization.centring: true (default) centres refined points at or below
 # topology_grouping.zero_error_threshold only, "all" every refined point (the
-# behaviour before ADR-0040), false none. Above the threshold centring was
-# never measured to help and never brought a point below it (ADR-0040).
+# behaviour before ADR-0039), false none. Above the threshold centring was
+# never measured to help and never brought a point below it (ADR-0039).
 CENTRING_MODES = (True, False, "all")
 
 
@@ -357,7 +357,7 @@ def optimize_assignment(
                      see optimize.endpoints (defaults: 1e-3, true, 2)
     centring       : true centres each refined point at or below
                      zero_error_threshold inside the derived bond bands
-                     (ADR-0028 (c), ADR-0040); "all" every refined point;
+                     (ADR-0028 (c), ADR-0039); "all" every refined point;
                      false none                            (default: true)
 
     `shell_seed_info`, if given, is the {group_index: best_param_vector}
@@ -458,7 +458,7 @@ def optimize_assignment(
             "config or set refine_jac: false")
 
     # Centring inside the derived bond bands (ADR-0028 (c)): on by default
-    # for zero-error points (ADR-0040), a no-op for configs without derived
+    # for zero-error points (ADR-0039), a no-op for configs without derived
     # bonds.
     centring = centring_mode(opt_cfg)
     centring_cfg = ideal_bond_config(cfg) if centring is not False else None

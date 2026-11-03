@@ -1,4 +1,4 @@
-"""Centring acts on zero-error points only (ADR-0040).
+"""Centring acts on zero-error points only (ADR-0039).
 
 Above the threshold centring never brought a point below it and was never
 measured to help (ADR-0028 (c) measured it on zero-error points), so
@@ -57,7 +57,7 @@ def _centred_after_stage2(monkeypatch, stage2_error, mode):
     (5e-4, None, True),     # at or below the threshold: centred by default
     (1e-3, None, True),     # the threshold itself counts as zero error
     (2e-2, None, False),    # above it: not centred by default
-    (2e-2, "all", True),    # "all": every refined point, as before ADR-0040
+    (2e-2, "all", True),    # "all": every refined point, as before ADR-0039
     (5e-4, False, False),   # false: none
 ])
 def test_centring_only_at_or_below_the_threshold(monkeypatch, stage2_error, mode, centred):

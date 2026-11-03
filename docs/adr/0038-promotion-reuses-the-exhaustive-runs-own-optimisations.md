@@ -105,7 +105,7 @@ run is the 54-55 % measured above.
 centring of points at or below the threshold 3.3 %, centring of points above it 10.9 %. None of
 those 34 centring calls brought a point below the threshold, and none changed a class. Centring
 is a tie-break inside the zero-error region (ADR-0028 (c)); restricting it to points at or below
-the threshold would save about a tenth of a run. Decided in ADR-0040.
+the threshold would save about a tenth of a run. Decided in ADR-0039.
 
 ## Consequences
 

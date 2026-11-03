@@ -521,7 +521,7 @@ def best_entry_per_assignment(entries: list) -> dict:
     """{assignment_key: entry}, each assignment's lowest-error entry among
     `run` entries (error, sg, asgn, params, structure, config); failed
     entries (no params) are left out. The lowest-error entry is what
-    re-optimising that assignment returns (ADR-0039)."""
+    re-optimising that assignment returns (ADR-0038)."""
     best = {}
     for entry in entries:
         err, sg, asgn, params, _, cfg = entry
@@ -544,7 +544,7 @@ def promote_to_detected_supergroup(sg: int, best_p, structure: dict, sg_config: 
 
     `optimised` (best_entry_per_assignment of the run's own entries) holds
     the assignments this run has already optimised; when the G' assignment
-    is among them, its entry stands in for the re-optimisation (ADR-0039).
+    is among them, its entry stands in for the re-optimisation (ADR-0038).
     The symmetrised point still wins when it scores at least as well.
 
     Returns (error, G', assignment, param_vector, structure, G'-config), or

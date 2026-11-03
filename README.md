@@ -187,7 +187,7 @@ mode A; `mode` must agree with whether `spacegroup` is present:
    In an exhaustive run, a promotion to the detected group takes an
    assignment the run has already optimised there from the run instead of
    re-optimising it
-   ([ADR-0039](docs/adr/0039-promotion-reuses-the-exhaustive-runs-own-optimisations.md)).
+   ([ADR-0038](docs/adr/0038-promotion-reuses-the-exhaustive-runs-own-optimisations.md)).
 
 Once a space group is fixed (by either mode), the shared pipeline is:
 
@@ -283,7 +283,7 @@ bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every
 | `anion_coordination_numbers` | [floor(m), ceil(m)] | Per anion, its CN over the framework cations, in place of the range the mean m gives all anions together ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
 | `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
-| `optimization.centring` | `true` | After Stage 2, move a zero-error point (at or below `topology_grouping.zero_error_threshold`) to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back. `all` centres every refined point, as before [ADR-0040](docs/adr/0040-centring-only-at-zero-error.md); `false` none |
+| `optimization.centring` | `true` | After Stage 2, move a zero-error point (at or below `topology_grouping.zero_error_threshold`) to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back. `all` centres every refined point, as before [ADR-0039](docs/adr/0039-centring-only-at-zero-error.md); `false` none |
 
 ### Automatic anion coupling
 
