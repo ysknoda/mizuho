@@ -1,4 +1,4 @@
-"""ADR-0037: derived like-charge minimum distances.
+"""ADR-0040: derived like-charge minimum distances.
 
 The Al-O-N composition-free run (ADR-0033) left zero-error classes with an
 NO3-like N-O contact of 1.370 A (Al5O3N3 class 7, SG 157) and Al-Al pairs at

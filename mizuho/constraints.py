@@ -41,7 +41,7 @@ structure used to supply is derived from that:
   sits at HBOND_MIN_ANGLE or more from the O-H bond (ADR-0028 (b)).
   `auto_hydrogen_bond: false` switches it off.
 
-- Optionally, with `auto_repulsion: true` (off by default; ADR-0037),
+- Optionally, with `auto_repulsion: true` (off by default; ADR-0040),
   like-charge minimum distances: for every anion pair and
   every cation pair present, a `repulsion_constraints` entry at the
   shortest distance two ions bonded to one shared counter-ion C can have
@@ -92,7 +92,7 @@ POLYHEDRON_ANGLES = {4: (95.0, 125.0, None), 6: (70.0, 110.0, 150.0)}
 # three-centre bonds with both arms that short are excluded with it.
 HBOND_ACCEPTOR_RANGE = 2.2
 HBOND_MIN_ANGLE = 130.0
-# Like-charge minimum distances (ADR-0037). The Tammes angle of N points:
+# Like-charge minimum distances (ADR-0040). The Tammes angle of N points:
 # the largest smallest angle N points on a sphere can have (N <= 6 and 12
 # Fejes Toth 1943, 7-9 Schuette & van der Waerden 1951, 10-11 Danzer 1963;
 # not read in the originals from this environment). A CN-n polyhedron's
@@ -199,7 +199,7 @@ def _cation_angle_floor(cn_hi: int) -> float:
 
 def like_charge_repulsions(config: dict, bonds: list, cn_ranges: dict, anions: list,
                            cations: list, bonded_by: dict) -> list:
-    """The derived `repulsion_constraints` (ADR-0037): one per like-charge
+    """The derived `repulsion_constraints` (ADR-0040): one per like-charge
     pair some counter-ion bonds both of, at the shortest distance the
     shared ion's bands allow, rounded down to the mA. `bonds` is the final
     bond list (a stated bond wins, so its distance_min is used)."""
@@ -385,7 +385,7 @@ def derive_constraints(config: dict) -> dict:
         bv["tolerance"] = tol
         out["bond_valence"] = bv
     out["bond_constraints"] = bonds
-    # Opt-in (ADR-0037): on the Al-O-N pilot they removed the short contacts
+    # Opt-in (ADR-0040): on the Al-O-N pilot they removed the short contacts
     # but not in favour of the MLIP-low-energy classes.
     if config.get("auto_repulsion", False) is True:
         cations = sorted(c for c in cns if c in present)

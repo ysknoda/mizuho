@@ -368,7 +368,7 @@ def test_derived_config_scores_zero_at_the_reference(name):
 
 @pytest.mark.parametrize("name", sorted(n for n in _REFS if n != "pyrite_fes2"))
 def test_derived_like_charge_repulsion_is_zero_at_the_reference(name):
-    """ADR-0037: every derived anion-anion and cation-cation minimum lies
+    """ADR-0040: every derived anion-anion and cation-cation minimum lies
     below the reference's shortest pair. Pyrite is left out: its S-S is
     the S2(2-) dimer's covalent bond (2.162 A), which no shared-ion bound
     describes."""

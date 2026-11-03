@@ -279,7 +279,7 @@ bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every
 | `anion_coordination_numbers` | [floor(m), ceil(m)] | Per anion, its CN over the framework cations, in place of the range the mean m gives all anions together ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
 | `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
-| `auto_repulsion` | `false` | Opt-in: a `repulsion_constraints` minimum for every anion-anion and cation-cation pair: the shortest distance two ions sharing a counter-ion can have inside the derived bands and angle floors ([ADR-0037](docs/adr/0037-derived-like-charge-minimum-distances.md)). Off by default: on the Al-O-N pilot it removed short contacts but not in favour of low-energy structures; not for homonuclear polyanions (S2, O2, N3) |
+| `auto_repulsion` | `false` | Opt-in: a `repulsion_constraints` minimum for every anion-anion and cation-cation pair: the shortest distance two ions sharing a counter-ion can have inside the derived bands and angle floors ([ADR-0040](docs/adr/0040-derived-like-charge-minimum-distances.md)). Off by default: on the Al-O-N pilot it removed short contacts but not in favour of low-energy structures; not for homonuclear polyanions (S2, O2, N3) |
 | `optimization.centring` | `true` | After Stage 2, move a zero-error point to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back |
 
 ### Automatic anion coupling

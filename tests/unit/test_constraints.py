@@ -183,7 +183,7 @@ def test_anion_coordination_numbers_names_anions_only():
 
 
 # ---------------------------------------------------------------------------
-# ADR-0037: like-charge minimum distances
+# ADR-0040: like-charge minimum distances
 # ---------------------------------------------------------------------------
 
 def _repulsions(out):
