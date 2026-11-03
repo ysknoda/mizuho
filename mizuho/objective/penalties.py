@@ -51,9 +51,15 @@ REQUIRED_ENTRY_KEYS = {
 }
 
 
+# Opt-in switches read as `config.get(key, False) is True`: any value but a
+# boolean (e.g. "yes" or 1) would leave them off without a word.
+BOOLEAN_SWITCHES = ("auto_repulsion",)  # ADR-0040
+
+
 def validate_constraint_entries(config: dict) -> None:
-    """Refuse a constraint entry that lacks a required key, and a
-    volume_constraint stating only one bound.
+    """Refuse a constraint entry that lacks a required key, a
+    volume_constraint stating only one bound, and an opt-in switch
+    (BOOLEAN_SWITCHES) set to anything but true or false.
 
     Before this check a bond or repulsion entry without, say, distance_min
     raised a KeyError inside every candidate's optimisation, each reported
@@ -82,6 +88,9 @@ def validate_constraint_entries(config: dict) -> None:
                         "and volume_max, or neither for the automatic band")
     elif vc is not None and not isinstance(vc, dict):
         problems.append(f"volume_constraint must be a mapping, got {type(vc).__name__}")
+    for key in BOOLEAN_SWITCHES:
+        if key in config and not isinstance(config[key], bool):
+            problems.append(f"{key} must be true or false, got {config[key]!r}")
     if problems:
         raise ConfigError("; ".join(problems))
 

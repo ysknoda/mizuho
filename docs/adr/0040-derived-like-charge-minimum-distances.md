@@ -15,7 +15,8 @@ Al-Al >= 2.6 A) rejects class 7 and leaves corundum at 5.2e-4; this ADR derives 
   (like and mixed) that some counter-ion bonds both of (`bonded_anions` respected). One
   `repulsion_constraints` entry each, weight 1.0, the existing one-sided term (energy.py
   section 5). **Opt-in:** only with `auto_repulsion: true` (default `false`, decided after the
-  pilot below); without it the objective is exactly the previous one. A repulsion the config
+  pilot below); without it the objective is exactly the previous one. The value must be true or
+  false, checked at load (ADR-0036). A repulsion the config
   states for a pair wins. A pair no counter-ion bonds both of gets none.
 - **Distance (the rule).** Two ions A, B bonded to one shared ion C, by bonds no shorter than
   their bands' short ends a = d_min(A-C), b = d_min(B-C), at an angle of at least theta at C, are

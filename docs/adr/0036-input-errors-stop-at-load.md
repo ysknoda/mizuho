@@ -18,6 +18,9 @@ entries, and `coordination_numbers` without an anion charge, stopped with raw tr
   hybridisation`. Each list must be a list of mappings. `volume_constraint` states both bounds or
   neither. Every problem is listed in one message, e.g.
   `ERROR: bond_constraints[0] is missing distance_min`.
+- **Opt-in switches are booleans.** `auto_repulsion` (ADR-0040) is read as `is True`, so any
+  other value (`"yes"`, `1`) would leave it off without a word; at load it must be true or false
+  (`BOOLEAN_SWITCHES`).
 - **`errors.ConfigError(ValueError)` marks an input error.** The derived-constraint checks
   (ADR-0028), the composition-free checks (ADR-0033), the density and void bands, the removed-key
   check, `topology_grouping` and the backend checks raise it; `cli.main` prints it as one `ERROR:`

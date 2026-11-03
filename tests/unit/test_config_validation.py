@@ -112,6 +112,19 @@ def test_every_fixture_is_valid(path):
     validate_constraint_entries(yaml.safe_load(path.read_text()))
 
 
+@pytest.mark.parametrize("value, ok", [
+    (True, True), (False, True), ("yes", False), (1, False), (None, False)])
+def test_auto_repulsion_is_a_boolean(value, ok):
+    """ADR-0040's switch is read as `is True`: "yes" or 1 would leave the
+    derived repulsions off without a word, so they stop at load."""
+    cfg = {"composition": "Al2O3", "auto_repulsion": value}
+    if ok:
+        validate_constraint_entries(cfg)
+    else:
+        with pytest.raises(ConfigError, match="auto_repulsion must be true or false"):
+            validate_constraint_entries(cfg)
+
+
 def test_config_error_is_a_value_error():
     """Callers that catch ValueError keep working."""
     assert issubclass(ConfigError, ValueError)
