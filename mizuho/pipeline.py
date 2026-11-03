@@ -507,14 +507,45 @@ def _run_composition_pool(base_config: dict, pool: list, args) -> None:
     print("\n  Done.\n")
 
 
+def assignment_key(sg: int, composition, specs) -> tuple:
+    """(space group, composition, multiset of (element, Wyckoff letter)):
+    the identity of one Wyckoff assignment within a run, independent of
+    site order. `specs` holds {"element", "letter"} dicts or assignment
+    objects with .element and .entry.letter."""
+    pairs = [(s["element"], s["letter"]) if isinstance(s, dict) else (s.element, s.entry.letter)
+             for s in specs]
+    return (int(sg), composition, tuple(sorted(pairs)))
+
+
+def best_entry_per_assignment(entries: list) -> dict:
+    """{assignment_key: entry}, each assignment's lowest-error entry among
+    `run` entries (error, sg, asgn, params, structure, config); failed
+    entries (no params) are left out. The lowest-error entry is what
+    re-optimising that assignment returns (ADR-0038)."""
+    best = {}
+    for entry in entries:
+        err, sg, asgn, params, _, cfg = entry
+        if params is None:
+            continue
+        key = assignment_key(sg, cfg.get("composition"), asgn)
+        if key not in best or err < best[key][0]:
+            best[key] = entry
+    return best
+
+
 def promote_to_detected_supergroup(sg: int, best_p, structure: dict, sg_config: dict,
                                    config: dict, opt_cfg: dict, symprec: float,
-                                   verbose: bool = False):
+                                   verbose: bool = False, optimised: dict = None):
     """Act on a higher detected symmetry (docs/adr/0010-success-is-the-
     detected-symmetry.md): a structure optimised in `sg` whose detected
     group at `symprec` is a supergroup G' is symmetrised into G', mapped
     onto a G' Wyckoff assignment in mizuho's setting, and re-optimised
     there, so the answer returned is a genuine G' optimum.
+
+    `optimised` (best_entry_per_assignment of the run's own entries) holds
+    the assignments this run has already optimised; when the G' assignment
+    is among them, its entry stands in for the re-optimisation (ADR-0038).
+    The symmetrised point still wins when it scores at least as well.
 
     Returns (error, G', assignment, param_vector, structure, G'-config), or
     None when the detected group is `sg` itself (nothing to promote) or the
@@ -538,12 +569,19 @@ def promote_to_detected_supergroup(sg: int, best_p, structure: dict, sg_config: 
     cfg2 = build_sg_config(config, g2, composition=sg_config.get("composition"))
     cfg2["wyckoff_sites"] = assignments_to_sites(asgn)
     e_sym = compute_error(m.param_vector, cfg2)
-    p2, e2, st2 = optimize_one_assignment(asgn, cfg2, opt_cfg, verbose=False,
-                                          label=m.label())
+    done = (optimised or {}).get(assignment_key(g2, sg_config.get("composition"), asgn))
+    if done is not None:
+        e2, _, asgn2, p2, st2, cfg_out = done
+        how = "already optimised in this run"
+    else:
+        p2, e2, st2 = optimize_one_assignment(asgn, cfg2, opt_cfg, verbose=False,
+                                              label=m.label())
+        asgn2, cfg_out, how = asgn, cfg2, "re-optimised"
     if st2 is None or e_sym <= e2:
         from .structure import build_structure
         p2, e2, st2 = m.param_vector, e_sym, build_structure(m.param_vector, cfg2)
+        asgn2, cfg_out = asgn, cfg2
     if verbose:
         print(f"  SG {sg} structure detected as SG {g2} at {symprec:g} A: "
-              f"re-optimised as {m.label()}, error {e2:.6f}")
-    return e2, g2, asgn, p2, st2, cfg2
+              f"{how} as {m.label()}, error {e2:.6f}")
+    return e2, g2, asgn2, p2, st2, cfg_out

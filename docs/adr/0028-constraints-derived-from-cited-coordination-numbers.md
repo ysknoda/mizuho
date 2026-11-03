@@ -191,6 +191,8 @@ On by default; `optimization.centring: false` switches it off; a no-op for confi
 derived bonds (every hand fixture). Ideal angles are left out: they move the published anatase
 and corundum 5-12 %. Sheared cells (forsterite, diopside) are not fixed by this; they are a
 search problem, not a centring one.
+Since ADR-0039 only points at or below the zero-error threshold are centred (the points this
+decision was measured on); `optimization.centring: all` centres every refined point.
 
 ## Measured: topaz and adamite with (a), (b) and centring (2026-10-15, x4, seeds 42-46)
 

@@ -405,3 +405,26 @@ def test_centring_pulls_a_strained_wurtzite_cell_back():
     assert e < 1e-4
     assert topology_key(p, cfg) == topology_key(pv, cfg)
     assert abs(p[0] / pv[0] - 1) < 0.03 and abs(p[1] / pv[1] - 1) < 0.03
+
+
+# ---------------------------------------------------------------------------
+# ADR-0037: Phase 1's bond-counting pruning keeps every reference assignment,
+# under the fixture's own constraints and under the derived ones.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("derived", [False, True], ids=["fixture", "derived"])
+@pytest.mark.parametrize("name", sorted(_REFS))
+def test_bond_count_pruning_keeps_the_reference_assignment(name, derived):
+    from mizuho.composition import parse_composition
+    from mizuho.search.bond_counting import BondCountCheck
+
+    ref = _REFS[name]
+    _, _, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    if derived:
+        base = _minimal_config(base)
+    full = build_sg_config(base, ref.sg)
+    check = BondCountCheck.from_config(full, list(parse_composition(full["composition"])),
+                                       composition_free=False)
+    assert check is None or check.rejection(asg) is None, (
+        f"{name}: {check.rejection(asg)} rejects the published assignment")
