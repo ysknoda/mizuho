@@ -3,6 +3,7 @@ Wyckoff coordinates for a single Wyckoff-site assignment.
 """
 
 import functools
+import math
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
@@ -158,6 +159,44 @@ class AssignmentResult:
     converged: bool             # False: a sampling backend's fallback class
     n_stage1: int               # Stage-1 endpoints handed to the ledger
     stopped_early: bool
+    # Generations at which optimization.cn_stop stopped Stage-1 restarts
+    # (ADR-0041); None when the rule is off.
+    cn_stopped: Optional[tuple] = None
+
+
+CN_STOP_KEYS = ("patience_factor", "min_patience", "rel_tol")
+
+
+def cn_stop_patience(opt_cfg: dict, n_params: int):
+    """Validated `optimization.cn_stop` (ADR-0041): (K, rel_tol), K the
+    patience in generations, max(min_patience, ceil(patience_factor *
+    n_params)); None when the block is absent (the default: off)."""
+    raw = (opt_cfg or {}).get("cn_stop")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError(
+            f"optimization.cn_stop must be a mapping, got {type(raw).__name__}")
+    unknown = set(raw) - set(CN_STOP_KEYS)
+    if unknown:
+        raise ConfigError(
+            f"optimization.cn_stop: unknown key(s) {sorted(unknown)}; "
+            f"allowed: {', '.join(CN_STOP_KEYS)}")
+
+    def number(key, default, integer=False):
+        v = raw.get(key, default)
+        ok = (not isinstance(v, bool) and isinstance(v, (int, float))
+              and v > 0 and (not integer or isinstance(v, int)))
+        if not ok:
+            kind = "a positive integer" if integer else "a positive number"
+            raise ConfigError(f"optimization.cn_stop.{key} must be {kind}, got {v!r}")
+        return v
+
+    # Defaults: the patience calibrated on the Al-O-N record (ADR-0041).
+    factor = number("patience_factor", 9)
+    k_min = number("min_patience", 15, integer=True)
+    rel_tol = number("rel_tol", 1e-3)
+    return max(k_min, math.ceil(factor * n_params)), float(rel_tol)
 
 
 def optimize_assignment(
@@ -473,6 +512,8 @@ def optimize_assignment(
     # Validated before the try below, like refine_jac: a bad
     # topology_grouping block is a configuration error, not a failed run.
     ledger = EndpointLedger(cfg, grouping_settings(opt_cfg))
+    cn_stop = cn_stop_patience(opt_cfg, len(bounds))
+    restart_stops = [] if cn_stop is not None else None
     centre_max_error = ledger.threshold if centring != "all" else np.inf
 
     try:
@@ -507,7 +548,12 @@ def optimize_assignment(
             plateau_rel_tol  = plateau_rel_tol,
             restart_workers  = restart_workers,
             endpoint_ledger  = ledger,
+            cn_stop_patience = cn_stop[0] if cn_stop else None,
+            cn_stop_rel_tol  = cn_stop[1] if cn_stop else 1e-3,
+            restart_stops    = restart_stops,
         )
+        cn_stopped = (None if restart_stops is None
+                      else tuple(g for g in restart_stops if g is not None))
         if verbose:
             print(f"      Stage 1 ({opt_cfg.get('backend', 'cma')}) best error: {best_e:.6f}")
             if ledger.enabled:
@@ -540,7 +586,8 @@ def optimize_assignment(
                 n_endpoints=cls.n_endpoints if cls else 0,
                 n_zero=cls.n_zero if cls else 0,
                 converged=cls.converged if cls else True,
-                n_stage1=ledger.n_added, stopped_early=ledger.stopped))
+                n_stage1=ledger.n_added, stopped_early=ledger.stopped,
+                cn_stopped=cn_stopped))
         return _merge_classes(results)
 
     except _INPUT_OR_DEFECT as exc:

@@ -351,6 +351,9 @@ def optimise_candidates(valid_asgns: list, sg_config: dict, opt_cfg: dict,
             stop = ", stopped early" if best.stopped_early else ""
             print(f"  Stage-1 endpoints: {best.n_stage1}, best class reached by "
                   f"{best.n_endpoints}{stop}")
+        if best.cn_stopped:
+            print(f"  Stage-1 restarts stopped on coordination: {len(best.cn_stopped)} "
+                  f"(generations {', '.join(map(str, best.cn_stopped))})")
         for r in results[1:]:
             print(f"  Further topology class: error {r.error:.6f} "
                   f"(reached by {r.n_endpoints} endpoint(s))"

@@ -106,18 +106,24 @@ def _read_sg_record(path) -> dict:
     return done
 
 
-def _append_sg_record(path, sg: int, rows: list, seconds: float) -> None:
+def _append_sg_record(path, sg: int, rows: list, seconds: float,
+                      cn_stopped: list = None) -> None:
     """Record one finished group: every Phase 2 entry with its assignment,
     error, parameters, topology class and detected group at the success
     tolerance. This is the ground-truth table of ADR-0026 and lets a run
-    resume after an interruption."""
+    resume after an interruption. `cn_stopped`, aligned with `rows`, gives
+    each entry's Stage-1 restarts stopped by optimization.cn_stop
+    (ADR-0041), recorded as the generations they stopped at; an entry
+    whose value is None (the rule off) gets no such field."""
     import json
 
     from .optimize.endpoints import topology_key
     from .symmetry import detect_spacegroup
 
     entries = []
-    for err, _, asgn, best_p, structure, sg_config in rows:
+    if cn_stopped is None:
+        cn_stopped = [None] * len(rows)
+    for (err, _, asgn, best_p, structure, sg_config), stopped in zip(rows, cn_stopped):
         key = det = None
         if best_p is not None:
             cfg = dict(sg_config, wyckoff_sites=assignments_to_sites(asgn))
@@ -133,6 +139,8 @@ def _append_sg_record(path, sg: int, rows: list, seconds: float) -> None:
             "topology": None if key is None else repr(key),
             "detected_sg": det,
         })
+        if stopped is not None:
+            entries[-1]["cn_stopped"] = list(stopped)
     with open(path, "a") as fh:
         fh.write(json.dumps({"sg": sg, "seconds": round(seconds, 1), "entries": entries}) + "\n")
 
@@ -432,6 +440,7 @@ def _cmd_run(args) -> None:
 
         # Phase 2: optimise each Wyckoff assignment; one entry per
         # topology class it reached, up to --top (ADR-0019)
+        sg_cn_stopped = []
         for comp, comp_config, valid_asgns, _, shell_seeds in groups:
             if not valid_asgns:
                 continue
@@ -441,10 +450,13 @@ def _cmd_run(args) -> None:
                                                header=header):
                 if r is None:
                     all_results.append((1e10, sg, asgn, None, None, comp_config))
+                    sg_cn_stopped.append(None)
                 else:
                     all_results.append((r.error, sg, asgn, r.params, r.structure, comp_config))
+                    sg_cn_stopped.append(r.cn_stopped)
         if record:
-            _append_sg_record(record, sg, all_results[n_before:], time.time() - sg_started)
+            _append_sg_record(record, sg, all_results[n_before:], time.time() - sg_started,
+                              cn_stopped=sg_cn_stopped)
 
     if not all_results:
         print("\nNo valid structures found across all space groups."); sys.exit(0)

@@ -43,6 +43,9 @@ def _cma_es(
         periodic_mask=None,
         plateau_patience=None,
         plateau_rel_tol=1e-3,
+        cn_stop_patience=None,
+        cn_stop_rel_tol=1e-3,
+        return_stop=False,
 ):
     """
     Single-run CMA-ES minimiser with box/periodic bound handling.
@@ -83,11 +86,29 @@ def _cma_es(
                     0.1% improvement over the last plateau_patience
                     generations counts as a plateau". Ignored when
                     plateau_patience is None.
+    cn_stop_patience : optional int, K generations (ADR-0041). When set,
+                    `objective` must accept a `terms` keyword dict, as
+                    objective.energy.compute_error does, and this restart
+                    stops once its best point violates an integer
+                    coordination range (terms["cn_deficit"] > 0) and the
+                    lexicographic best (cn_deficit, soft coordination
+                    term terms["cn"]) has not improved for K generations
+                    -- the soft term by more than cn_stop_rel_tol
+                    relative. A restart that has evaluated any point with
+                    cn_deficit 0 is never stopped by this rule. None (the
+                    default) disables it; the objective is then called
+                    with the parameter vector alone, exactly as before.
+    cn_stop_rel_tol : relative improvement of the soft coordination term
+                    that counts, for cn_stop_patience.
+    return_stop : when True, also return the generation at which
+                    cn_stop_patience stopped this restart (None when it
+                    did not).
 
     Returns
     -------
     best_x : np.ndarray
     best_f : float
+    stop_gen : int or None, only with return_stop=True
     """
     n = len(x0)
     if periodic_mask is None:
@@ -123,8 +144,34 @@ def _cma_es(
 
     es = _cma.CMAEvolutionStrategy(to_norm(x0), sigma0, opts)
 
+    # Coordination-deficit stop (ADR-0041): best (deficit, soft CN term)
+    # in lexicographic order, and the generation it last improved.
+    cn_best = [None, None]
+    cn_last_gen = 0
+    cn_stop_gen = None
+
+    def evaluate(x):
+        if not cn_stop_patience:
+            return objective(x)
+        terms = {}
+        f = objective(x, terms=terms)
+        d = int(terms.get("cn_deficit", 0))
+        s = float(terms.get("cn", 0.0))
+        bd, bs = cn_best
+        if bd is None or d < bd:
+            cn_best[:] = [d, s]
+            return f, True
+        if d == bd and s < bs - cn_stop_rel_tol * abs(bs) - 1e-15:
+            cn_best[1] = s
+            return f, True
+        return f, False
+
+    def value(x):
+        r = evaluate(x)
+        return r[0] if cn_stop_patience else r
+
     best_x = to_orig(to_norm(x0))
-    best_f = objective(best_x)
+    best_f = value(best_x)
     gen = 0
     plateau_ref_f = best_f
     plateau_ref_gen = 0
@@ -132,7 +179,13 @@ def _cma_es(
     while not es.stop() and gen < maxiter:
         solutions = es.ask()
         xs_orig = [to_orig(np.asarray(s)) for s in solutions]
-        fs = [objective(x) for x in xs_orig]
+        if cn_stop_patience:
+            evals = [evaluate(x) for x in xs_orig]
+            fs = [f for f, _ in evals]
+            if any(improved for _, improved in evals):
+                cn_last_gen = gen + 1
+        else:
+            fs = [objective(x) for x in xs_orig]
         es.tell(solutions, fs)
         gen += 1
 
@@ -151,6 +204,15 @@ def _cma_es(
                 break
             plateau_ref_f, plateau_ref_gen = best_f, gen
 
+        if (cn_stop_patience and cn_best[0] > 0
+                and gen - cn_last_gen >= cn_stop_patience):
+            cn_stop_gen = gen
+            if verbose:
+                print(f"      CMA-ES stopped at gen {gen}: coordination "
+                      f"deficit {cn_best[0]} unchanged for "
+                      f"{cn_stop_patience} generations")
+            break
+
         if verbose and gen % max(1, maxiter // 10) == 0:
             print(f"      CMA-ES gen {gen:4d}/{maxiter}  "
                   f"best={best_f:.6f}  sigma={es.sigma:.5f}")
@@ -158,6 +220,8 @@ def _cma_es(
     if verbose and es.stop():
         print(f"      CMA-ES converged at gen {gen} ({es.stop()})")
 
+    if return_stop:
+        return best_x, best_f, cn_stop_gen
     return best_x, best_f
 
 
@@ -168,12 +232,19 @@ def _run_one_restart_cma(task):
     function works, a local closure does not (see optimize.driver's
     own objective-construction comment)."""
     (objective, x0, bounds, sigma0, maxiter, tol, run_seed, periodic_mask,
-     plateau_patience, plateau_rel_tol, verbose) = task
-    return _cma_es(
+     plateau_patience, plateau_rel_tol, cn_stop_patience, cn_stop_rel_tol,
+     verbose) = task
+    kwargs = dict(
         objective=objective, x0=x0, bounds=bounds, sigma0=sigma0,
         maxiter=maxiter, tol=tol, seed=run_seed, verbose=verbose,
         periodic_mask=periodic_mask, plateau_patience=plateau_patience,
         plateau_rel_tol=plateau_rel_tol)
+    if not cn_stop_patience:
+        # The call (and its (x, f) result) is exactly the one made before
+        # ADR-0041, so code that substitutes _cma_es keeps working.
+        return _cma_es(**kwargs)
+    return _cma_es(**kwargs, cn_stop_patience=cn_stop_patience,
+                   cn_stop_rel_tol=cn_stop_rel_tol, return_stop=True)
 
 
 def multistart_cma_es(
@@ -192,6 +263,9 @@ def multistart_cma_es(
         plateau_rel_tol=1e-3,
         restart_workers=1,
         endpoint_ledger=None,
+        cn_stop_patience=None,
+        cn_stop_rel_tol=1e-3,
+        restart_stops=None,
         **_ignored,
 ):
     """
@@ -293,6 +367,14 @@ def multistart_cma_es(
                  stop (ADR-0019). None (the default) runs every
                  restart exactly as before.
 
+    cn_stop_patience, cn_stop_rel_tol : forwarded to every restart's
+                 _cma_es call -- see that function's docstring (ADR-0041).
+                 None (the default) disables the rule.
+    restart_stops : optional list. When given, one entry per restart that
+                 ran (restarts skipped by the ledger have none) is
+                 appended in restart order: the generation at which
+                 cn_stop_patience stopped it, or None.
+
     Returns
     -------
     best_x : np.ndarray
@@ -351,13 +433,17 @@ def multistart_cma_es(
 
         run_seed = restart_seed(seed, restart)
         tasks.append((objective, x0, bounds, sigma0, maxiter, tol, run_seed,
-                      periodic_mask, plateau_patience, plateau_rel_tol, verbose))
+                      periodic_mask, plateau_patience, plateau_rel_tol,
+                      cn_stop_patience, cn_stop_rel_tol, verbose))
 
     # ---- Pass 2: run each restart's _cma_es, sequentially or across a
     # process pool (restart_workers) ----
     results = run_restarts(_run_one_restart_cma, tasks, restart_workers, endpoint_ledger)
 
-    for restart, (x_r, f_r) in enumerate(results):
+    for restart, res in enumerate(results):
+        x_r, f_r = res[0], res[1]
+        if restart_stops is not None:
+            restart_stops.append(res[2] if len(res) > 2 else None)
         is_best = f_r < global_best_f
         if verbose:
             print(f"      [Restart {restart+1}] error={f_r:.6f}"
