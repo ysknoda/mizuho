@@ -33,6 +33,7 @@ import numpy as np
 from .. import bond_graph as bg
 from .._parallel_utils import run_parallel_tasks
 from ..structure import build_structure
+from ..errors import ConfigError
 
 DEFAULT_THRESHOLD = 1e-3
 DEFAULT_HITS = 2
@@ -56,32 +57,32 @@ def grouping_settings(opt_cfg: dict) -> GroupingSettings:
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping must be a mapping, "
             f"got {type(raw).__name__}"
         )
     unknown = set(raw) - {"zero_error_threshold", "early_stop", "early_stop_hits"}
     if unknown:
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping: unknown key(s) "
             f"{sorted(unknown)}; allowed: zero_error_threshold, "
             "early_stop, early_stop_hits"
         )
     thr = raw.get("zero_error_threshold", DEFAULT_THRESHOLD)
     if isinstance(thr, bool) or not isinstance(thr, (int, float)) or not thr > 0:
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping.zero_error_threshold "
             f"must be a positive number, got {thr!r}"
         )
     stop = raw.get("early_stop", True)
     if not isinstance(stop, bool):
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping.early_stop must be "
             f"true or false, got {stop!r}"
         )
     hits = raw.get("early_stop_hits", DEFAULT_HITS)
     if isinstance(hits, bool) or not isinstance(hits, int) or hits < 1:
-        raise ValueError(
+        raise ConfigError(
             "optimization.topology_grouping.early_stop_hits must "
             f"be a positive integer, got {hits!r}"
         )
@@ -176,7 +177,9 @@ def run_restarts(
     ledger: EndpointLedger | None,
     to_x: Callable = lambda x: x,
 ) -> list:
-    """Run restart tasks and return their (x, f) results in restart order.
+    """Run restart tasks and return their results in restart order. A
+    result is a tuple whose first two items are the end point x and its
+    error f; any further items are passed through untouched.
 
     Without a ledger, or with early stopping off, this is one call to
     run_parallel_tasks, exactly as before. With early stopping, tasks run
@@ -188,17 +191,17 @@ def run_restarts(
         return run_parallel_tasks(worker, tasks, max_workers=restart_workers)
     if not ledger.settings.early_stop:
         results = run_parallel_tasks(worker, tasks, max_workers=restart_workers)
-        for x, f in results:
-            ledger.add(to_x(x), f)
+        for r in results:
+            ledger.add(to_x(r[0]), r[1])
         return results
     wave = max(1, int(restart_workers or 1))
     kept = []
     for start in range(0, len(tasks), wave):
-        for x, f in run_parallel_tasks(
+        for r in run_parallel_tasks(
             worker, tasks[start : start + wave], max_workers=restart_workers
         ):
-            kept.append((x, f))
-            if ledger.add(to_x(x), f):
+            kept.append(r)
+            if ledger.add(to_x(r[0]), r[1]):
                 return kept
     return kept
 

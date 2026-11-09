@@ -25,25 +25,33 @@ pruning/acceptance rules, which are unchanged):
 import heapq
 import itertools
 from collections import defaultdict
-from typing import Dict, List, Tuple
 
 from ..structure import SiteAssignment
-from .base import (AssignmentProblem, SearchBudget, SearchResult,
-                    SearchStrategy, TreeNode, _canonical_label,
-                    _fixed_representative_counts, _shape_group_sizes,
-                    _shape_key, canonical_representatives, _is_complete,
-                    _ratio_consistent)
+from .base import (
+    AssignmentProblem,
+    SearchBudget,
+    SearchResult,
+    SearchStrategy,
+    TreeNode,
+    _canonical_label,
+    _fixed_representative_counts,
+    _counts_admissible,
+    _leaf_status,
+    _room_for,
+    _shape_group_sizes,
+    _shape_key,
+    canonical_representatives,
+)
 from .scoring import surrogate_score
 
 
-def _choice_key(problem: AssignmentProblem, elem: str, letter: str) -> Tuple[int, str]:
+def _choice_key(problem: AssignmentProblem, elem: str, letter: str) -> tuple[int, str]:
     return (problem.elements.index(elem), letter)
 
 
 class BestFirstBranchAndBoundStrategy(SearchStrategy):
-
     def search(self, problem: AssignmentProblem, budget: SearchBudget) -> SearchResult:
-        valid_assignments: List[List[SiteAssignment]] = []
+        valid_assignments: list[list[SiteAssignment]] = []
         seen_labels: set = set()
         nodes_expanded = 0
         budget_exhausted = False
@@ -59,9 +67,7 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
         representatives = canonical_representatives(problem.wu_entries)
         shape_group_sizes = _shape_group_sizes(problem.wu_entries)
         all_choices = [
-            (elem, entry)
-            for elem in problem.elements
-            for entry in representatives
+            (elem, entry) for elem in problem.elements for entry in representatives
         ]
 
         counter = itertools.count()  # heap tie-breaker (nodes aren't orderable)
@@ -69,12 +75,16 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
         heap = [(surrogate_score(root, problem), next(counter), root, (-1, ""))]
 
         while heap:
-            if (budget.max_candidates is not None
-                    and len(valid_assignments) >= budget.max_candidates):
+            if (
+                budget.max_candidates is not None
+                and len(valid_assignments) >= budget.max_candidates
+            ):
                 budget_exhausted = True
                 break
-            if (budget.max_nodes_expanded is not None
-                    and nodes_expanded >= budget.max_nodes_expanded):
+            if (
+                budget.max_nodes_expanded is not None
+                and nodes_expanded >= budget.max_nodes_expanded
+            ):
                 budget_exhausted = True
                 break
             if not heap:
@@ -89,12 +99,12 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
             if node.total_atoms >= problem.max_atoms_per_fu:
                 continue
 
-            assigned_counts: Dict[str, int] = defaultdict(int)
+            assigned_counts: dict[str, int] = defaultdict(int)
             for a in node.assignments:
                 assigned_counts[a.element] += a.entry.multiplicity
 
-            fixed_rep_counts: Dict[str, int] = {}
-            if problem.zero_charge_mode and not problem.allow_dup_wyckoff:
+            fixed_rep_counts: dict[str, int] = {}
+            if problem.exclude_fixed_overlap:
                 fixed_rep_counts = _fixed_representative_counts(node.assignments)
 
             for elem, wentry in all_choices:
@@ -102,14 +112,15 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
                 if key < last_key:
                     continue  # combinations, not permutations
 
-                if (assigned_counts[elem]
-                        >= problem.composition[elem] * problem.max_formula_units):
+                if not _room_for(problem, assigned_counts, elem):
                     continue
 
-                if (problem.zero_charge_mode and not problem.allow_dup_wyckoff
-                        and not wentry.free_params
-                        and fixed_rep_counts.get(wentry.letter, 0)
-                            >= shape_group_sizes[_shape_key(wentry)]):
+                if (
+                    problem.exclude_fixed_overlap
+                    and not wentry.free_params
+                    and fixed_rep_counts.get(wentry.letter, 0)
+                    >= shape_group_sizes[_shape_key(wentry)]
+                ):
                     continue
 
                 mult = wentry.multiplicity
@@ -123,36 +134,25 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
                 new_counts = dict(assigned_counts)
                 new_counts[elem] = new_counts.get(elem, 0) + mult
 
-                too_many = any(
-                    new_counts.get(e2, 0) >
-                    problem.composition.get(e2, 1) * problem.max_formula_units + 0.01
-                    for e2 in new_counts)
-                if too_many:
-                    continue
-
-                if not _ratio_consistent(new_counts, problem.composition,
-                                          problem.elements, elem):
+                if not _counts_admissible(problem, new_counts, elem):
                     continue
 
                 new_assignments = node.assignments + [SiteAssignment(elem, wentry)]
                 new_node = TreeNode(new_assignments, new_charge, new_atoms)
 
-                complete = _is_complete(new_counts, problem.composition)
-                if complete:
-                    if problem.zero_charge_mode:
-                        accepted = True
-                    else:
-                        accepted = problem.tol_min <= new_charge <= problem.tol_max
-
-                    if accepted:
-                        canon = _canonical_label(new_assignments)
-                        if canon not in seen_labels:
-                            seen_labels.add(canon)
-                            valid_assignments.append(new_assignments)
-                            if (budget.max_candidates is not None
-                                    and len(valid_assignments) >= budget.max_candidates):
-                                budget_exhausted = True
-                                break
+                accepted, stop = _leaf_status(problem, new_counts, new_charge, new_assignments)
+                if accepted:
+                    canon = _canonical_label(new_assignments)
+                    if canon not in seen_labels:
+                        seen_labels.add(canon)
+                        valid_assignments.append(new_assignments)
+                        if (
+                            budget.max_candidates is not None
+                            and len(valid_assignments) >= budget.max_candidates
+                        ):
+                            budget_exhausted = True
+                            break
+                if stop:
                     continue
 
                 if not problem.zero_charge_mode:
@@ -166,5 +166,8 @@ class BestFirstBranchAndBoundStrategy(SearchStrategy):
                 score = surrogate_score(new_node, problem)
                 heapq.heappush(heap, (score, next(counter), new_node, key))
 
-        return SearchResult(accepted=valid_assignments, nodes_expanded=nodes_expanded,
-                            budget_exhausted=budget_exhausted)
+        return SearchResult(
+            accepted=valid_assignments,
+            nodes_expanded=nodes_expanded,
+            budget_exhausted=budget_exhausted,
+        )

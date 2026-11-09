@@ -366,6 +366,22 @@ def test_derived_config_scores_zero_at_the_reference(name):
     assert total < 1e-3, f"{name}: derived config scores {total:.6f} at its reference"
 
 
+@pytest.mark.parametrize("name", sorted(n for n in _REFS if n != "pyrite_fes2"))
+def test_derived_like_charge_repulsion_is_zero_at_the_reference(name):
+    """ADR-0040: every derived anion-anion and cation-cation minimum lies
+    below the reference's shortest pair. Pyrite is left out: its S-S is
+    the S2(2-) dimer's covalent bond (2.162 A), which no shared-ion bound
+    describes."""
+    ref = _REFS[name]
+    _, pv, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    full = dict(build_sg_config(dict(_minimal_config(base), auto_repulsion=True), ref.sg))
+    full["wyckoff_sites"] = assignments_to_sites(asg)
+    assert full["repulsion_constraints"]
+    bd = error_breakdown(pv, full)
+    assert [r for r in bd["repulsion"] if r["penalty"] > 0] == []
+
+
 def test_centring_pulls_a_strained_wurtzite_cell_back():
     """ADR-0028 (c): the derived search's wurtzite end point (seed 42,
     c +11.3 % on its bound, error 0) is centred inside the derived bond
@@ -389,3 +405,26 @@ def test_centring_pulls_a_strained_wurtzite_cell_back():
     assert e < 1e-4
     assert topology_key(p, cfg) == topology_key(pv, cfg)
     assert abs(p[0] / pv[0] - 1) < 0.03 and abs(p[1] / pv[1] - 1) < 0.03
+
+
+# ---------------------------------------------------------------------------
+# ADR-0037: Phase 1's bond-counting pruning keeps every reference assignment,
+# under the fixture's own constraints and under the derived ones.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("derived", [False, True], ids=["fixture", "derived"])
+@pytest.mark.parametrize("name", sorted(_REFS))
+def test_bond_count_pruning_keeps_the_reference_assignment(name, derived):
+    from mizuho.composition import parse_composition
+    from mizuho.search.bond_counting import BondCountCheck
+
+    ref = _REFS[name]
+    _, _, asg = ref.build()
+    base = yaml.safe_load(open(f"{FIXTURES}/{ref.fixture}.yaml"))
+    if derived:
+        base = _minimal_config(base)
+    full = build_sg_config(base, ref.sg)
+    check = BondCountCheck.from_config(full, list(parse_composition(full["composition"])),
+                                       composition_free=False)
+    assert check is None or check.rejection(asg) is None, (
+        f"{name}: {check.rejection(asg)} rejects the published assignment")

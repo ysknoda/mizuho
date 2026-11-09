@@ -2,19 +2,9 @@
 the exact scenario that failed before the fix.
 """
 
-from mizuho.composition import discover_compositions
 from mizuho.data import WYCKOFF_DB
 from mizuho.objective.penalties import HARD_RADII, _PARTIAL_VOL
 from mizuho.search.dfs import wyckoff_tree_search
-
-
-def test_bug_discover_compositions_zero_charge_no_longer_empty():
-    """Bug #11: discover_compositions always returned [] when every
-    element had ionic charge 0 (or ionic_charges was omitted)."""
-    result = discover_compositions(
-        sg=227, elements=["Si"], ionic_charges={},
-        max_sites_per_elem=2, max_atoms=24)
-    assert result != []
 
 
 def test_bug_same_letter_exclusion_gated_by_zero_charge_mode():

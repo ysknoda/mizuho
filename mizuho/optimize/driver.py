@@ -3,6 +3,7 @@ Wyckoff coordinates for a single Wyckoff-site assignment.
 """
 
 import functools
+import math
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
@@ -11,6 +12,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 from ..constraints import ideal_bond_config
+from ..errors import ConfigError
 from ..objective.energy import compute_error
 from ..structure import assignments_to_sites, build_bounds, build_structure
 from .basin_hopping import multistart_basin_hopping
@@ -45,6 +47,22 @@ logger = logging.getLogger(__name__)
 # tolerance (an order below Stage 1's 1e-3 convergence margin).
 CENTRING_WEIGHT = 0.01
 CENTRING_TOLERANCE = 1e-4
+# optimization.centring: true (default) centres refined points at or below
+# topology_grouping.zero_error_threshold only, "all" every refined point (the
+# behaviour before ADR-0039), false none. Above the threshold centring was
+# never measured to help and never brought a point below it (ADR-0039).
+CENTRING_MODES = (True, False, "all")
+
+
+def centring_mode(opt_cfg: dict):
+    """Validated `optimization.centring`."""
+    mode = (opt_cfg or {}).get("centring", True)
+    if mode not in CENTRING_MODES or (mode in (0, 1) and not isinstance(mode, bool)):
+        raise ValueError(
+            "optimization.centring must be true, false or \"all\", "
+            f"got {mode!r}")
+    return mode
+
 
 _CORE_BACKENDS = {
     "cma": multistart_cma_es,
@@ -60,6 +78,12 @@ if _optuna_module.GP_AVAILABLE:
     _OPTIONAL_BACKENDS["bayesian"] = _optuna_module.multistart_optuna_gp
 if _mcmc_module.EMCEE_AVAILABLE:
     _OPTIONAL_BACKENDS["mcmc"] = _mcmc_module.multistart_mcmc
+
+
+# Exceptions that never mean "this candidate did not converge": a config
+# error, or a defect in the code. optimize_assignment lets them through.
+_INPUT_OR_DEFECT = (ConfigError, KeyError, TypeError, AttributeError, NameError,
+                    ImportError)
 
 
 def _resolve_backend(name):
@@ -90,7 +114,7 @@ def _resolve_backend(name):
         raise ImportError(
             f"optimization.backend {name!r} requires the optional 'emcee' "
             f"package -- install it with: pip install mizuho[mcmc]")
-    raise ValueError(
+    raise ConfigError(
         f"Unknown optimization.backend {name!r}; available backends: "
         f"{sorted(all_backends)}")
 
@@ -135,6 +159,44 @@ class AssignmentResult:
     converged: bool             # False: a sampling backend's fallback class
     n_stage1: int               # Stage-1 endpoints handed to the ledger
     stopped_early: bool
+    # Generations at which optimization.cn_stop stopped Stage-1 restarts
+    # (ADR-0041); None when the rule is off.
+    cn_stopped: Optional[tuple] = None
+
+
+CN_STOP_KEYS = ("patience_factor", "min_patience", "rel_tol")
+
+
+def cn_stop_patience(opt_cfg: dict, n_params: int):
+    """Validated `optimization.cn_stop` (ADR-0041): (K, rel_tol), K the
+    patience in generations, max(min_patience, ceil(patience_factor *
+    n_params)); None when the block is absent (the default: off)."""
+    raw = (opt_cfg or {}).get("cn_stop")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError(
+            f"optimization.cn_stop must be a mapping, got {type(raw).__name__}")
+    unknown = set(raw) - set(CN_STOP_KEYS)
+    if unknown:
+        raise ConfigError(
+            f"optimization.cn_stop: unknown key(s) {sorted(unknown)}; "
+            f"allowed: {', '.join(CN_STOP_KEYS)}")
+
+    def number(key, default, integer=False):
+        v = raw.get(key, default)
+        ok = (not isinstance(v, bool) and isinstance(v, (int, float))
+              and v > 0 and (not integer or isinstance(v, int)))
+        if not ok:
+            kind = "a positive integer" if integer else "a positive number"
+            raise ConfigError(f"optimization.cn_stop.{key} must be {kind}, got {v!r}")
+        return v
+
+    # Defaults: the patience calibrated on the Al-O-N record (ADR-0041).
+    factor = number("patience_factor", 9)
+    k_min = number("min_patience", 15, integer=True)
+    rel_tol = number("rel_tol", 1e-3)
+    return max(k_min, math.ceil(factor * n_params)), float(rel_tol)
 
 
 def optimize_assignment(
@@ -339,6 +401,10 @@ def optimize_assignment(
 
     topology_grouping : {zero_error_threshold, early_stop, early_stop_hits},
                      see optimize.endpoints (defaults: 1e-3, true, 2)
+    centring       : true centres each refined point at or below
+                     zero_error_threshold inside the derived bond bands
+                     (ADR-0028 (c), ADR-0039); "all" every refined point;
+                     false none                            (default: true)
 
     `shell_seed_info`, if given, is the {group_index: best_param_vector}
     dict geometry.rank_by_feasibility already computed while ranking
@@ -429,7 +495,7 @@ def optimize_assignment(
             "optimization.refine_jac requires the optional 'jax' "
             "package -- install it with: pip install mizuho[jax]")
     if refine_jac and cfg.get("hybridisation_constraints"):
-        raise ValueError(
+        raise ConfigError(
             "optimization.refine_jac is not supported together with "
             "hybridisation_constraints: this term's hard neighbour "
             "cutoff and 'ang > 150 deg -> skip' branch have not been "
@@ -437,14 +503,18 @@ def optimize_assignment(
             "notes) -- remove hybridisation_constraints from this "
             "config or set refine_jac: false")
 
-    # Centring inside the derived bond bands (ADR-0028 (c)): on by default,
-    # a no-op for configs without derived bonds.
-    centring_cfg = (ideal_bond_config(cfg)
-                    if opt_cfg.get("centring", True) is not False else None)
+    # Centring inside the derived bond bands (ADR-0028 (c)): on by default
+    # for zero-error points (ADR-0039), a no-op for configs without derived
+    # bonds.
+    centring = centring_mode(opt_cfg)
+    centring_cfg = ideal_bond_config(cfg) if centring is not False else None
 
     # Validated before the try below, like refine_jac: a bad
     # topology_grouping block is a configuration error, not a failed run.
     ledger = EndpointLedger(cfg, grouping_settings(opt_cfg))
+    cn_stop = cn_stop_patience(opt_cfg, len(bounds))
+    restart_stops = [] if cn_stop is not None else None
+    centre_max_error = ledger.threshold if centring != "all" else np.inf
 
     try:
         # Stage 1: multi-start global search (backend-selectable). Every
@@ -478,7 +548,12 @@ def optimize_assignment(
             plateau_rel_tol  = plateau_rel_tol,
             restart_workers  = restart_workers,
             endpoint_ledger  = ledger,
+            cn_stop_patience = cn_stop[0] if cn_stop else None,
+            cn_stop_rel_tol  = cn_stop[1] if cn_stop else 1e-3,
+            restart_stops    = restart_stops,
         )
+        cn_stopped = (None if restart_stops is None
+                      else tuple(g for g in restart_stops if g is not None))
         if verbose:
             print(f"      Stage 1 ({opt_cfg.get('backend', 'cma')}) best error: {best_e:.6f}")
             if ledger.enabled:
@@ -501,7 +576,7 @@ def optimize_assignment(
         for x0, f0 in reps:
             p, e = _stage2(obj, cfg, x0, f0, bounds, refine_methods, refine_max,
                            refine_ftol, refine_jac, verbose, label)
-            if centring_cfg is not None:
+            if centring_cfg is not None and e <= centre_max_error:
                 p, e = _centre(obj, cfg, centring_cfg, p, e, bounds, refine_max,
                                refine_ftol, verbose)
             key = topology_key(p, cfg) if ledger.enabled else None
@@ -511,14 +586,20 @@ def optimize_assignment(
                 n_endpoints=cls.n_endpoints if cls else 0,
                 n_zero=cls.n_zero if cls else 0,
                 converged=cls.converged if cls else True,
-                n_stage1=ledger.n_added, stopped_early=ledger.stopped))
+                n_stage1=ledger.n_added, stopped_early=ledger.stopped,
+                cn_stopped=cn_stopped))
         return _merge_classes(results)
 
+    except _INPUT_OR_DEFECT as exc:
+        # A wrong config or a code defect fails every candidate the same
+        # way; reporting each as one failed optimisation hid it (ADR-0036).
+        raise exc
     except Exception as exc:
         if verbose:
             import traceback
             traceback.print_exc()
-            print(f"    [WARN] Optimisation failed for {label}: {exc}")
+        print(f"    [WARN] Optimisation failed for {label}: "
+              f"{type(exc).__name__}: {exc}")
         return []
 
 

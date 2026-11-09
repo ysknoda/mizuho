@@ -1,19 +1,18 @@
 """Orchestration drivers: wire together space-group selection (Phase 0),
 Wyckoff-assignment search (Phase 1), and numerical optimisation (Phase 2)
-for the three CLI modes (single composition, composition pool, fully
-automatic composition discovery).
+for the CLI modes (single composition, composition pool, and the
+composition-free search of ADR-0033, whose Phase 1 is
+search_and_rank_compositions).
 """
 
-import sys
 from collections import Counter
-from typing import Dict, List
+from typing import Dict
 
-from .composition import _all_charges_zero, discover_compositions, parse_composition
+from .composition import _all_charges_zero, parse_composition
 from .constraints import derive_constraints
 from .config import (
     _lattice_bounds_for_system, augment_coupling_constraints, augment_tetrahedral_bridging,
 )
-from .data import WYCKOFF_DB
 from .geometry import precompute_letter_feasibility, rank_by_feasibility_staged
 from .io.poscar import write_poscar
 from .io.report import print_summary
@@ -120,21 +119,33 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
     through to optimize.optimize_one_assignment's own shell_seed_info
     parameter so Phase 2 reuses this solve instead of repeating it.
     """
-    has_shape_constraints = bool(sg_config.get("coordination_constraints")
-                                  or sg_config.get("angle_constraints"))
+    letter_feasibility = _letter_feasibility(sg_config)
+    valid_asgns = wyckoff_tree_search(sg_config, letter_feasibility=letter_feasibility)
+    return rank_assignments(valid_asgns, sg_config, max_cands, verbose, letter_feasibility)
 
+
+def _letter_feasibility(sg_config: dict):
+    """geometry.precompute_letter_feasibility's table, or None when the
+    config has no coordination or angle constraint to check."""
+    if not (sg_config.get("coordination_constraints") or sg_config.get("angle_constraints")):
+        return None
     # Phase 1's feasibility solves are small CMA-ES runs; unseeded, the
     # ranking they produce does not reproduce (docs/adr/0012-phase-1-is-
     # seeded-and-ranked-over-several-seeds.md).
     seed = sg_config.get("optimization", {}).get("seed")
+    feasibility_workers = sg_config.get("tree_search", {}).get("feasibility_workers")
+    return precompute_letter_feasibility(
+        sg_config, multistart_cma_es, seed=seed, max_workers=feasibility_workers)
 
-    letter_feasibility = None
-    if has_shape_constraints:
-        feasibility_workers = sg_config.get("tree_search", {}).get("feasibility_workers")
-        letter_feasibility = precompute_letter_feasibility(
-            sg_config, multistart_cma_es, seed=seed, max_workers=feasibility_workers)
 
-    valid_asgns = wyckoff_tree_search(sg_config, letter_feasibility=letter_feasibility)
+def rank_assignments(valid_asgns: list, sg_config: dict, max_cands: int,
+                     verbose: bool = False, letter_feasibility=None):
+    """The second half of search_and_rank: merge assignments equivalent
+    under the Euclidean normalizer, rank by geometric feasibility, and keep
+    the first max_cands. Returns (valid_asgns, n_found, shell_seeds)."""
+    has_shape_constraints = bool(sg_config.get("coordination_constraints")
+                                  or sg_config.get("angle_constraints"))
+    seed = sg_config.get("optimization", {}).get("seed")
     n_found = len(valid_asgns)
     if not valid_asgns:
         return valid_asgns, n_found, []
@@ -166,6 +177,52 @@ def search_and_rank(sg_config: dict, max_cands: int, verbose: bool = False):
         valid_asgns = valid_asgns[:max_cands]
         shell_seeds = shell_seeds[:max_cands]
     return valid_asgns, n_found, shell_seeds
+
+
+def max_formula_units(composition: str, assignments: list) -> int:
+    """The largest number of formula units (conventional cell) among
+    assignments of one composition (ADR-0033)."""
+    formula = parse_composition(composition)
+    e0 = next(iter(formula))
+    return max(sum(a.entry.multiplicity for a in asgn if a.element == e0) // formula[e0]
+               for asgn in assignments)
+
+
+def search_and_rank_compositions(base_config: dict, sg: int, max_cands: int,
+                                 verbose: bool = False) -> list:
+    """Phase 1 without a composition (ADR-0033): enumerate every
+    charge-neutral Wyckoff assignment of `base_config["elements"]` in `sg`
+    within `tree_search.max_atoms` atoms per primitive cell, group the
+    assignments by reduced formula, and rank each group as search_and_rank
+    ranks a fixed composition, keeping max_cands per (space group,
+    composition). Each group gets its own config, built for its composition
+    exactly as a fixed-composition run would build it.
+
+    Returns [(composition, sg_config, valid_asgns, n_found, shell_seeds)],
+    smallest formula first."""
+    from .search.base import reduced_formula
+
+    # The enumeration itself is unbudgeted: tree_search.max_candidates is
+    # the per-composition cap here, not a stop on the search.
+    enum_cfg = dict(base_config, spacegroup=sg)
+    enum_cfg["tree_search"] = {k: v for k, v in (base_config.get("tree_search") or {}).items()
+                               if k != "max_candidates"}
+    groups: Dict[str, list] = {}
+    for asgn in wyckoff_tree_search(enum_cfg):
+        groups.setdefault(reduced_formula(asgn, base_config["elements"]), []).append(asgn)
+
+    out = []
+    for comp in sorted(groups, key=lambda c: (sum(parse_composition(c).values()), c)):
+        sg_config = build_sg_config(base_config, sg, composition=comp)
+        # geometry's letter table keeps the letters whose multiplicity fits
+        # composition x max_formula_units, and a letter missing from it
+        # scores as perfect in the staged ranking.
+        sg_config["tree_search"] = dict(sg_config.get("tree_search") or {},
+                                        max_formula_units=max_formula_units(comp, groups[comp]))
+        valid, n_found, seeds = rank_assignments(
+            groups[comp], sg_config, max_cands, verbose, _letter_feasibility(sg_config))
+        out.append((comp, sg_config, valid, n_found, seeds))
+    return out
 
 
 def class_descriptors(structure: dict, config: dict):
@@ -219,8 +276,8 @@ def _optimize_candidates_parallel(valid_asgns: list, sg_config: dict,
     """
     Phase 2 candidate dispatch via optimize.parallel's
     optimize_assignments_parallel, shared by cli.py's single-
-    composition mode and this module's _run_one_composition /
-    _run_auto_composition_mode -- all three otherwise-independent
+    composition (and composition-free) mode and this module's
+    _run_one_composition -- both otherwise-independent
     Phase 2 loops hand off to this one function rather than each
     re-implementing the same candidate_workers branch (see
     pipeline.build_sg_config's own docstring for the analogous
@@ -294,6 +351,9 @@ def optimise_candidates(valid_asgns: list, sg_config: dict, opt_cfg: dict,
             stop = ", stopped early" if best.stopped_early else ""
             print(f"  Stage-1 endpoints: {best.n_stage1}, best class reached by "
                   f"{best.n_endpoints}{stop}")
+        if best.cn_stopped:
+            print(f"  Stage-1 restarts stopped on coordination: {len(best.cn_stopped)} "
+                  f"(generations {', '.join(map(str, best.cn_stopped))})")
         for r in results[1:]:
             print(f"  Further topology class: error {r.error:.6f} "
                   f"(reached by {r.n_endpoints} endpoint(s))"
@@ -378,221 +438,6 @@ def _composition_config(entry) -> dict:
     return cfg
 
 
-def _run_auto_composition_mode(base_config: dict, args) -> None:
-    """
-    Fully automatic mode:
-      (1) Select space groups  (Phase 0 auto-SG, or user-specified SG list)
-      (2) For each selected SG, discover charge-neutral compositions
-          automatically from the Wyckoff multiplicities
-      (3) Run Wyckoff tree search + CMA-ES optimisation for every
-          (composition, SG) pair
-      (4) Global ranking and POSCAR output
-
-    Controlled by config['auto_composition_settings']:
-        elements            list  element symbols to use  (required)
-        max_sites_per_elem  int   Wyckoff sites per element (default 3)
-        max_atoms           int   atom-count ceiling (default 32)
-        max_compositions    int   cap on compositions per SG (default 30)
-        require_all_elements bool all elements must appear (default true)
-    """
-    ionic_q    = base_config.get("ionic_charges", {})
-    ac_cfg     = base_config.get("auto_composition_settings", {})
-    opt_cfg    = base_config.get("optimization", {})
-
-    # Element list: from settings, or derived from ionic_charges keys
-    elements = ac_cfg.get("elements") or list(ionic_q.keys())
-    if not elements:
-        print("ERROR: 'elements' must be set in auto_composition_settings "
-              "or ionic_charges."); sys.exit(1)
-
-    max_spe   = ac_cfg.get("max_sites_per_elem", 3)
-    max_atoms = ac_cfg.get("max_atoms",           32)
-    max_comp  = ac_cfg.get("max_compositions",    30)
-    req_all   = ac_cfg.get("require_all_elements", True)
-
-    # --- Banner ---
-    print(f"\n{'='*65}")
-    print(f"  Mizuho  -  Fully Automatic Composition + Structure Search")
-    print(f"  Elements     : {elements}")
-    print(f"  Ionic charges: {ionic_q}")
-    print(f"  Max atoms/cell: {max_atoms}")
-    print(f"  Max sites/elem: {max_spe}")
-    sg_given = base_config.get("spacegroup")
-    sg_list_given = base_config.get("spacegroup_list")
-    if sg_given:
-        print(f"  Space group  : {sg_given} (fixed)")
-    elif sg_list_given:
-        print(f"  Space groups : {sg_list_given} (user list)")
-    else:
-        print(f"  Space group  : AUTO (Phase 0 screening)")
-    print(f"{'='*65}")
-
-    # ================================================================
-    # Step 1: Determine space group(s) to search
-    # ================================================================
-    if sg_given:
-        sg_list = [int(sg_given)]
-    elif sg_list_given:
-        sg_list = [int(s) for s in sg_list_given]
-    else:
-        # Phase 0: use a dummy composition for SG screening
-        # (pick the simplest possible composition for fast screening)
-        dummy_comp = "".join(elements)   # e.g. "NaZrPO"
-        dummy_cfg  = dict(base_config)
-        dummy_cfg["composition"] = dummy_comp
-        # Temporarily set a large charge tolerance for screening
-        dummy_cfg["charge_tolerance_min"] = -999
-        dummy_cfg["charge_tolerance_max"] =  999
-
-        # For SG screening we need at least one valid Wyckoff assignment.
-        # Use the first reachable charge-neutral composition we can find.
-        # Find that composition from the simplest SG in the DB.
-        screen_comp = None
-        for sg_try in sorted(WYCKOFF_DB.keys()):
-            comps = discover_compositions(
-                sg_try, elements, ionic_q,
-                max_sites_per_elem=2, max_atoms=24,
-                max_compositions=1, require_all_elements=True)
-            if comps:
-                screen_comp = comps[0]
-                break
-        if screen_comp is None:
-            screen_comp = dummy_comp
-
-        print(f"\n[Step 1] Phase 0 SG screening (proxy composition: {screen_comp}) ...")
-        proxy_cfg = dict(base_config)
-        proxy_cfg["composition"] = screen_comp
-        sg_list = auto_search_spacegroups(proxy_cfg, verbose=args.verbose)
-
-        if not sg_list:
-            print("  No viable SGs found by auto-screening.")
-            print("  Falling back to all supported SGs in Wyckoff DB.")
-            sg_list = sorted(WYCKOFF_DB.keys())
-
-    print(f"\n  Space groups selected: {sg_list}")
-
-    # ================================================================
-    # Step 2: For each SG, discover compositions
-    # ================================================================
-    print(f"\n[Step 2] Auto-discovering charge-neutral compositions ...")
-    print(f"  {'SG':>5}  {'Crystal system':>14}  # compositions  Compositions")
-    print(f"  {'-'*62}")
-
-    sg_comp_map: Dict[int, List[str]] = {}
-    for sg in sg_list:
-        if sg not in WYCKOFF_DB:
-            continue
-        comps = discover_compositions(
-            sg, elements, ionic_q,
-            max_sites_per_elem=max_spe,
-            max_atoms=max_atoms,
-            max_compositions=max_comp,
-            require_all_elements=req_all)
-        sg_comp_map[sg] = comps
-        cs = CRYSTAL_SYSTEM_OF_SG.get(sg, "?")
-        comp_preview = ", ".join(comps[:4])
-        if len(comps) > 4:
-            comp_preview += f" ... (+{len(comps)-4} more)"
-        print(f"  {sg:>5}  {cs:>14}  {len(comps):>13}  {comp_preview}")
-
-    total_pairs = sum(len(v) for v in sg_comp_map.values())
-    print(f"\n  Total (SG, composition) pairs to optimise: {total_pairs}")
-
-    if total_pairs == 0:
-        print("  No compositions found. "
-              "Try increasing max_atoms or max_sites_per_elem.")
-        return
-
-    # ================================================================
-    # Steps 3 & 4: Tree search + optimisation for every (SG, comp)
-    # ================================================================
-    all_results = []   # (error, comp, sg, asgn, best_p, structure, sg_cfg)
-    ts_cfg      = base_config.get("tree_search", {})
-    max_cands   = ts_cfg.get("max_candidates", 50)
-    pair_idx    = 0
-
-    for sg, comps in sg_comp_map.items():
-        cs = CRYSTAL_SYSTEM_OF_SG.get(sg, "?")
-
-        for comp_str in comps:
-            pair_idx += 1
-            print(f"\n{'='*65}")
-            print(f"  [{pair_idx}/{total_pairs}]  SG {sg} ({cs})  |  {comp_str}")
-            print(f"{'='*65}")
-
-            sg_config = build_sg_config(base_config, sg, composition=comp_str)
-
-            # Step 3a: Wyckoff tree search
-            print(f"\n[Phase 1] Wyckoff tree search ...")
-            try:
-                valid_asgns, n_found, shell_seeds = search_and_rank(
-                    sg_config, max_cands, verbose=args.verbose)
-            except Exception as exc:
-                print(f"  Tree search error: {exc}")
-                n_found, valid_asgns, shell_seeds = 0, [], []
-
-            mode = ("composition-matched"
-                    if _all_charges_zero(ionic_q, elements)
-                    else "charge-neutral")
-            print(f"  Found {n_found} {mode} assignment(s).")
-
-            if not valid_asgns:
-                print(f"  No valid Wyckoff assignments -- skipping.")
-                continue
-
-            # Step 3b: Phase 2 optimisation, one entry per topology class
-            for asgn, r in optimise_candidates(valid_asgns, sg_config, opt_cfg,
-                                               shell_seeds, args.verbose, args.top):
-                if r is None:
-                    all_results.append(
-                        (1e10, comp_str, sg, asgn, None, None, sg_config))
-                else:
-                    all_results.append((r.error, comp_str, sg, asgn, r.params,
-                                        r.structure, sg_config))
-
-    if not all_results:
-        print("\n  No valid structures found."); return
-
-    # ================================================================
-    # Step 4: Global ranking + POSCAR output
-    # ================================================================
-    all_results.sort(key=lambda x: x[0])
-    # One row per bond-graph topology class (ADR-0019).
-    ranked = merge_same_topology(all_results, lambda e: e[4], _composition_config)
-
-    print(f"\n{'='*65}")
-    print("  GLOBAL RANKING  (auto-discovered compositions)")
-    print(f"{'='*65}")
-    print(f"  {'Rank':>4}  {'Error':>12}  {'SG':>5}  "
-          f"{'Same':>4}  {'Composition':<22}  Assignment")
-    print(f"  {'-'*72}")
-    for rank, ((err, comp, sg, asgn, _, _, _), n_same) in enumerate(ranked, 1):
-        label = " + ".join(
-            f"{a.element}@{a.entry.letter}({a.entry.multiplicity})"
-            for a in asgn)
-        print(f"  {rank:>4}  {err:>12.5f}  {sg:>5}  {n_same:>4}  {comp:<22}  {label}")
-
-    top_n = min(args.top, len(ranked))
-    for rank in range(top_n):
-        err, comp, sg, asgn, best_p, structure, sg_config = ranked[rank][0]
-        if structure is None:
-            print(f"\n  [Rank {rank+1}] No valid structure."); continue
-
-        win_cfg = dict(sg_config)
-        win_cfg["wyckoff_sites"] = assignments_to_sites(asgn)
-        win_cfg["composition"]   = comp
-
-        print_summary(structure, asgn, win_cfg, err,
-                      param_vector=best_p)
-
-        safe = comp.replace(" ", "_")
-        out_path = (args.output if args.output and top_n == 1
-                    else f"{safe}_auto_rank{rank+1}.vasp")
-        write_poscar(structure, win_cfg, out_path)
-
-    print("\n  Done.\n")
-
-
 def _run_composition_pool(base_config: dict, pool: list, args) -> None:
     """
     Iterate over all compositions in the pool, run full search for each,
@@ -665,14 +510,45 @@ def _run_composition_pool(base_config: dict, pool: list, args) -> None:
     print("\n  Done.\n")
 
 
+def assignment_key(sg: int, composition, specs) -> tuple:
+    """(space group, composition, multiset of (element, Wyckoff letter)):
+    the identity of one Wyckoff assignment within a run, independent of
+    site order. `specs` holds {"element", "letter"} dicts or assignment
+    objects with .element and .entry.letter."""
+    pairs = [(s["element"], s["letter"]) if isinstance(s, dict) else (s.element, s.entry.letter)
+             for s in specs]
+    return (int(sg), composition, tuple(sorted(pairs)))
+
+
+def best_entry_per_assignment(entries: list) -> dict:
+    """{assignment_key: entry}, each assignment's lowest-error entry among
+    `run` entries (error, sg, asgn, params, structure, config); failed
+    entries (no params) are left out. The lowest-error entry is what
+    re-optimising that assignment returns (ADR-0038)."""
+    best = {}
+    for entry in entries:
+        err, sg, asgn, params, _, cfg = entry
+        if params is None:
+            continue
+        key = assignment_key(sg, cfg.get("composition"), asgn)
+        if key not in best or err < best[key][0]:
+            best[key] = entry
+    return best
+
+
 def promote_to_detected_supergroup(sg: int, best_p, structure: dict, sg_config: dict,
                                    config: dict, opt_cfg: dict, symprec: float,
-                                   verbose: bool = False):
+                                   verbose: bool = False, optimised: dict = None):
     """Act on a higher detected symmetry (docs/adr/0010-success-is-the-
     detected-symmetry.md): a structure optimised in `sg` whose detected
     group at `symprec` is a supergroup G' is symmetrised into G', mapped
     onto a G' Wyckoff assignment in mizuho's setting, and re-optimised
     there, so the answer returned is a genuine G' optimum.
+
+    `optimised` (best_entry_per_assignment of the run's own entries) holds
+    the assignments this run has already optimised; when the G' assignment
+    is among them, its entry stands in for the re-optimisation (ADR-0038).
+    The symmetrised point still wins when it scores at least as well.
 
     Returns (error, G', assignment, param_vector, structure, G'-config), or
     None when the detected group is `sg` itself (nothing to promote) or the
@@ -693,15 +569,22 @@ def promote_to_detected_supergroup(sg: int, best_p, structure: dict, sg_config: 
     except ValueError:
         return None
     asgn = resolve_fixed_assignment(g2, m.specs)
-    cfg2 = build_sg_config(config, g2)
+    cfg2 = build_sg_config(config, g2, composition=sg_config.get("composition"))
     cfg2["wyckoff_sites"] = assignments_to_sites(asgn)
     e_sym = compute_error(m.param_vector, cfg2)
-    p2, e2, st2 = optimize_one_assignment(asgn, cfg2, opt_cfg, verbose=False,
-                                          label=m.label())
+    done = (optimised or {}).get(assignment_key(g2, sg_config.get("composition"), asgn))
+    if done is not None:
+        e2, _, asgn2, p2, st2, cfg_out = done
+        how = "already optimised in this run"
+    else:
+        p2, e2, st2 = optimize_one_assignment(asgn, cfg2, opt_cfg, verbose=False,
+                                              label=m.label())
+        asgn2, cfg_out, how = asgn, cfg2, "re-optimised"
     if st2 is None or e_sym <= e2:
         from .structure import build_structure
         p2, e2, st2 = m.param_vector, e_sym, build_structure(m.param_vector, cfg2)
+        asgn2, cfg_out = asgn, cfg2
     if verbose:
         print(f"  SG {sg} structure detected as SG {g2} at {symprec:g} A: "
-              f"re-optimised as {m.label()}, error {e2:.6f}")
-    return e2, g2, asgn, p2, st2, cfg2
+              f"{how} as {m.label()}, error {e2:.6f}")
+    return e2, g2, asgn2, p2, st2, cfg_out

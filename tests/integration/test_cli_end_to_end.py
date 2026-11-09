@@ -178,6 +178,12 @@ def test_exhaustive_record_round_trips(tmp_path):
     assert rebuilt[0] == 0.0 and rebuilt[1] == 225
     np.testing.assert_allclose(rebuilt[3], p)
     assert [a.entry.letter for a in rebuilt[2]] == ["a", "b"]
+    assert "cn_stopped" not in done[225][0]
+
+    # ADR-0041: with optimization.cn_stop on, the stopped restarts' generations
+    _append_sg_record(path, 221, [row, row], 1.0, cn_stopped=[(17, 40), ()])
+    entries = _read_sg_record(path)[221]
+    assert [e["cn_stopped"] for e in entries] == [[17, 40], []]
 
 
 def test_unknown_spacegroup_strategy_is_rejected(tmp_path):

@@ -184,6 +184,10 @@ mode A; `mode` must agree with whether `spacegroup` is present:
    first, so a structure is reported in its highest group rather than in a
    subgroup that also reaches zero error
    ([ADR-0026](docs/adr/0026-exhaustive-spacegroup-strategy-and-symmetry-first-ranking.md)).
+   In an exhaustive run, a promotion to the detected group takes an
+   assignment the run has already optimised there from the run instead of
+   re-optimising it
+   ([ADR-0038](docs/adr/0038-promotion-reuses-the-exhaustive-runs-own-optimisations.md)).
 
 Once a space group is fixed (by either mode), the shared pipeline is:
 
@@ -212,7 +216,8 @@ commonly used top-level keys are:
 
 | Key | Purpose |
 |---|---|
-| `composition` | Target chemical formula, e.g. `"BaTiO3"` |
+| `composition` | Target chemical formula, e.g. `"BaTiO3"`; omit it and give `elements` for the composition-free search |
+| `elements` | Elements of a composition-free search, e.g. `[Al, O, N]`: the charge-neutral compositions come out of the search ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `spacegroup` | Space-group number (1-230); required unless `mode: auto_spacegroup` |
 | `mode` | `auto_spacegroup` opts in to the experimental automatic search (mode B, `spacegroup` omitted); `single_spacegroup` is an optional spelling of mode A |
 | `ionic_charges` | `{element: charge}` for ionic-mode searches |
@@ -220,11 +225,45 @@ commonly used top-level keys are:
 | `bond_constraints` | List of `{atom1, atom2, distance_min, distance_max, weight}` |
 | `angle_constraints` | List of `{atom_center, atom_neighbor, angle_min, angle_max, weight, exclude_neighbor_pairs}` |
 | `coordination_constraints` | List of `{center_atom, neighbor_atom, cn_min, cn_max, cutoff_distance}` |
-| `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle |
+| `tree_search` | Wyckoff-search budget: `max_sites`, `max_formula_units`, `max_candidates`; `strategy: exhaustive` for the DFS oracle. Without a composition: `max_atoms` (atoms per primitive cell, replaces `max_formula_units`), `require_all_elements` (default `true`), and `max_candidates` caps each (space group, composition); `bond_count_pruning: false` keeps assignments that bond counting proves cannot reach zero error ([ADR-0037](docs/adr/0037-bond-count-pruning-in-phase-1.md), default on) |
 | `spacegroup_search` | Mode-B tuning: `top_sg_count`, `mcts_budget`, `confirm_after_visits`, `crystal_system_hint`; `strategy: flat` for the original 3-stage screening, `strategy: exhaustive` (optional `spacegroups`, and `record: file.jsonl` to record each group and resume) for all 230 groups |
 | `optimization` | CMA-ES / L-BFGS-B settings: `n_restarts`, `cma_maxiter`, `seed`, ...; `topology_grouping` (see below) |
-| `auto_composition` | Set `true` for fully automatic composition + structure discovery |
 | `composition_pool` | List of composition strings to search over |
+
+### Required keys
+
+Every key has a default except these, and a config that lacks one stops at load with an
+`ERROR:` line naming the entry and key
+([ADR-0036](docs/adr/0036-input-errors-stop-at-load.md)):
+
+- `composition` or `elements` (one of them), and `spacegroup` or `mode: auto_spacegroup`;
+  with `elements`, `ionic_charges` for every element and `tree_search.max_atoms`;
+  with `coordination_numbers`, `ionic_charges` including an anion.
+- In each entry of `bond_constraints`: `atom1 atom2 distance_min distance_max`;
+  `coordination_constraints`: `center_atom neighbor_atom cn_min cn_max cutoff_distance`;
+  `angle_constraints`: `atom_center atom_neighbor angle_min angle_max`;
+  `repulsion_constraints`: `atom1 atom2 distance_min`;
+  `hybridisation_constraints`: `element hybridisation`.
+- `volume_constraint`: both `volume_min` and `volume_max`, or neither (automatic band).
+
+### Composition-free search
+
+Omit `composition` and name the elements; the Wyckoff tree search accepts every charge-neutral
+assignment that holds all of them within `tree_search.max_atoms` atoms per primitive cell, and
+each assignment's reduced formula is its composition ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)).
+Phase 2 keeps `max_candidates` per (space group, composition); `run` prints one ranking per
+composition and a composition summary.
+
+```yaml
+mode: auto_spacegroup
+elements: [Al, O, N]
+ionic_charges: {Al: 3, O: -2, N: -3}
+coordination_numbers: {Al: [4, 6]}
+anion_coordination_numbers: {O: [2, 4], N: [3, 4]}   # how the anions split the bonds
+density_g_cm3: [3.26, 4.10]
+tree_search: {max_atoms: 21, max_sites: 6}
+spacegroup_search: {strategy: exhaustive, record: alon.jsonl}
+```
 
 ### Neighbour/partner element specification (`atom2`, `neighbor_atom`, `atom_neighbor`)
 
@@ -246,7 +285,7 @@ angle_constraints:
 
 ### Constraints derived from cited coordination numbers
 
-For a compound with no reference structure, state the composition, `ionic_charges` and, per cation, its cited coordination number; mizuho derives the bond bands, cutoffs, coordination, angle and bond-valence constraints from them ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)). A constraint the config states for the same pair wins.
+For a compound with no reference structure, state the composition, `ionic_charges` and, per cation, its cited coordination number; mizuho derives the bond bands, cutoffs, coordination, angle, and bond-valence constraints from them (and, opt-in, like-charge distances) ([ADR-0028](docs/adr/0028-constraints-derived-from-cited-coordination-numbers.md)). A constraint the config states for the same pair wins.
 
 ```yaml
 coordination_numbers: {Al: 6, Si: 4}
@@ -257,9 +296,11 @@ bonded_anions: {Si: [O]}     # optional: Si bonds O only (topaz); default: every
 |---|---|---|
 | `coordination_numbers` | none | Cited CN per cation, an integer or `[min, max]`; turns derivation on |
 | `bonded_anions` | every anion | Per cation, the anions it bonds (a cited fact); the others are held outside its shell |
+| `anion_coordination_numbers` | [floor(m), ceil(m)] | Per anion, its CN over the framework cations, in place of the range the mean m gives all anions together ([ADR-0033](docs/adr/0033-composition-free-wyckoff-search.md)) |
 | `auto_hydroxyl` | `true` | With H: at most one H per anion; `false` for hydrates |
 | `auto_hydrogen_bond` | `true` | With H at CN 1: an anion within 2.2 A of H sits at 130 deg or more from the O-H bond |
-| `optimization.centring` | `true` | After Stage 2, move a zero-error point to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back |
+| `auto_repulsion` | `false` | Opt-in: a `repulsion_constraints` minimum for every anion-anion and cation-cation pair: the shortest distance two ions sharing a counter-ion can have inside the derived bands and angle floors ([ADR-0040](docs/adr/0040-derived-like-charge-minimum-distances.md)). Off by default: on the Al-O-N pilot it removed short contacts but not in favour of low-energy structures; not for homonuclear polyanions (S2, O2, N3). `true` or `false` only, checked at load |
+| `optimization.centring` | `true` | After Stage 2, move a zero-error point (at or below `topology_grouping.zero_error_threshold`) to where its derived bonds are nearest their ideal lengths (bond valence V / CN), within 1e-4 of its error and in the same topology class; pulls a cell strained inside the wide derived bands back. `all` centres every refined point, as before [ADR-0039](docs/adr/0039-centring-only-at-zero-error.md); `false` none |
 
 ### Automatic anion coupling
 

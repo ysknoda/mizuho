@@ -12,6 +12,16 @@ exported cell is recomputed and must equal the class's.
     python scripts/export_classes.py --out runs/classes/tio2 \\
         runs/exhaustive_adr0030/tio2_rutile.yaml:runs/exhaustive_adr0030/tio2_rutile.jsonl \\
         runs/exhaustive_adr0030/tio2_anatase.yaml:runs/exhaustive_adr0030/tio2_anatase.jsonl
+
+A composition-free run (ADR-0033) records each entry's composition; its
+classes are kept apart per composition and written to one subdirectory per
+composition, with one summary table over all of them.
+
+`--best N` also exports, per composition, the N lowest-error classes
+whatever their error, so a composition that never reaches the threshold
+still gets its closest structures; the table then marks which classes are
+within the threshold. Run on a record still being written, it reports a
+run's progress.
 """
 
 import argparse
@@ -44,8 +54,14 @@ def graph_of(lattice, species, frac, config):
     )
 
 
-def collect(pairs, threshold):
-    """{topology key: [(error, sg, entry, config, run name)]} over all records."""
+def collect(pairs, threshold, best=0):
+    """{(composition, topology key): [(error, sg, entry, config, run name)]}
+    over all records; the composition is None for a fixed-composition run.
+
+    Classes with an entry at or below `threshold`, and with best > 0 also
+    each composition's `best` lowest-error classes. Without `best` only the
+    entries at or below the threshold are kept, as before; with it every
+    entry of a kept class is."""
     classes = defaultdict(list)
     for cfg_path, rec_path in pairs:
         config = yaml.safe_load(open(cfg_path))
@@ -53,10 +69,17 @@ def collect(pairs, threshold):
         for line in open(rec_path):
             r = json.loads(line)
             for e in r["entries"]:
-                if e["error"] is not None and e["error"] <= threshold and e["topology"]:
-                    classes[e["topology"]].append(
+                if e["error"] is not None and (best or e["error"] <= threshold) and e["topology"]:
+                    classes[(e.get("composition"), e["topology"])].append(
                         (e["error"], int(r["sg"]), e, config, name)
                     )
+    if best:
+        lowest = defaultdict(list)
+        for (comp, key), items in classes.items():
+            lowest[comp].append((min(i[0] for i in items), key))
+        keep = {(comp, key) for comp, errs in lowest.items()
+                for k, (err, key) in enumerate(sorted(errs)) if k < best or err <= threshold}
+        classes = {ck: items for ck, items in classes.items() if ck in keep}
     return classes
 
 
@@ -171,22 +194,35 @@ def main(argv=None):
     p.add_argument("runs", nargs="+", help="config.yaml:record.jsonl, one per run")
     p.add_argument("--out", required=True, help="output directory")
     p.add_argument("--threshold", type=float, default=1e-3)
+    p.add_argument("--best", type=int, default=0,
+                   help="also export each composition's N lowest-error classes, "
+                        "whatever their error (default 0: threshold only)")
     a = p.parse_args(argv)
 
-    classes = collect([r.split(":") for r in a.runs], a.threshold)
+    classes = collect([r.split(":") for r in a.runs], a.threshold, a.best)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
 
     def rep_key(item):
+        # Within the threshold the highest symmetry represents a class
+        # (ADR-0026); above it, the lowest error.
         err, sg, e, _, _ = item
+        if err > a.threshold:
+            return (1, 0, err)
         det = e["detected_sg"] or sg
-        return (-point_group_order(det), err)
+        return (0, -point_group_order(det), err)
 
-    ordered = sorted(classes.items(), key=lambda kv: min(rep_key(i) for i in kv[1]))
+    ordered = sorted(classes.items(),
+                     key=lambda kv: (kv[0][0] or "", min(rep_key(i) for i in kv[1])))
     rows = []
-    for n, (key, items) in enumerate(ordered, 1):
+    numbers = Counter()
+    for (composition, key), items in ordered:
+        numbers[composition] += 1
+        n = numbers[composition]
         err, sg, e, config, run = min(items, key=rep_key)
-        sgc = build_sg_config(config, sg)
+        sgc = build_sg_config(config, sg, composition=composition)
+        cdir = out if composition is None else out / composition
+        cdir.mkdir(parents=True, exist_ok=True)
         st = _entries_from_record(sg, [e], sgc)[0][4]
         lat, frac, species, data = primitive(st)
         g = graph_of(lat, species, frac, sgc)
@@ -207,13 +243,14 @@ def main(argv=None):
             f"{tag} {''.join(f'{e}{k}' for e, k in comp.items())} {data.international} "
             f"(from run {run}, optimised in SG {sg}, error {err:.2g})"
         )
-        write_cif(out / f"{tag}.cif", title, lat, frac, species)
-        n_conv = check_cif(out / f"{tag}.cif", lat, frac, species, sgc, key)
-        write_poscar(out / f"{tag}.vasp", title, lat, frac, species)
+        write_cif(cdir / f"{tag}.cif", title, lat, frac, species)
+        n_conv = check_cif(cdir / f"{tag}.cif", lat, frac, species, sgc, key)
+        write_poscar(cdir / f"{tag}.vasp", title, lat, frac, species)
         rows.append(
             {
+                "composition": sgc["composition"],
                 "class": n,
-                "file": tag,
+                "file": str((cdir / tag).relative_to(out)),
                 "spacegroup": f"{data.international} ({data.number})",
                 "atoms_primitive": len(species),
                 "atoms_conventional": n_conv,
@@ -235,13 +272,15 @@ def main(argv=None):
                 "error": f"{err:.2g}",
             }
         )
+        if a.best:
+            rows[-1]["within_threshold"] = err <= a.threshold
     with open(out / "classes.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
     for r in rows:
         print(
-            f"{r['class']:>3} {r['spacegroup']:<14} atoms {r['atoms_primitive']:>3}  Z {r['formula_units']:>2}"
+            f"{r['composition']:<10} {r['class']:>3} {r['spacegroup']:<14} atoms {r['atoms_primitive']:>3}  Z {r['formula_units']:>2}"
             f"  V/fu {r['V_per_fu_A3']:7.2f}  dim {r['dimensionality']}"
             f"  c/e/f {r['corner_edge_face_per_cation']:<10} n {r['entries']:>3}  {r['runs']}"
         )
