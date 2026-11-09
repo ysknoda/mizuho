@@ -29,7 +29,7 @@ _ANGLE_IMAGE_RANGE = range(27)
 
 
 def compute_error(param_vector: np.ndarray, config: dict,
-                  verbose: bool = False) -> float:
+                  verbose: bool = False, terms: dict | None = None) -> float:
     """
     Evaluate the total error for a given parameter vector.
 
@@ -45,6 +45,19 @@ def compute_error(param_vector: np.ndarray, config: dict,
     6. E_charge : Charge balance
     7. E_vol    : Cell volume
     8. E_hybrid : Hybridisation state  (optional)
+
+    terms
+    -----
+    When a dict is passed, it is filled with each term's contribution
+    to the returned total (keys "overlap", "bond", "angle", "cn",
+    "repulsion", "charge", "bond_valence", "volume", "density",
+    "void", "aspect_ratio", "cell_validity", "hybrid"; a key is present
+    only when its term was evaluated) and with "cn_deficit": the sum over
+    every centre atom of every coordination constraint, cation and anion
+    centres alike, of how far its integer coordination number (neighbours
+    closer than the cutoff, every periodic image counted) lies outside
+    [cn_min, cn_max]. Left empty when the structure cannot be built. The
+    returned total is the same whether or not `terms` is passed.
 
     Wildcard "X"
     ------------
@@ -75,6 +88,14 @@ def compute_error(param_vector: np.ndarray, config: dict,
     N       = len(species)
     if N == 0:
         return 1e10
+
+    def _add(name: str, value):
+        if terms is not None:
+            terms[name] = terms.get(name, 0.0) + float(value)
+        return value
+
+    if terms is not None:
+        terms["cn_deficit"] = 0
 
     total = 0.0
     log   = []
@@ -128,7 +149,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         d_b  = np.broadcast_to(d_self[None, :], self_mask.shape)[self_mask]
         ov  += 500.0 * np.sum(((rs_b - d_b) / rs_b) ** 2)
 
-    total += ov
+    total += _add("overlap", ov)
     if verbose and ov > 0:
         log.append(f"  Overlap: {ov:.4f}")
 
@@ -209,7 +230,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
             raw      = float(np.sum([_penalty(d, dmin, dmax, w, scale=scale) for d in dists]))
             norm     = max(len(idx1), 1)
             bond_err = raw / norm
-            total   += bond_err
+            total   += _add("bond", bond_err)
             if verbose and bond_err > 0:
                 log.append(f"  Bond {e1}-{e2}: {len(dists)} pairs"
                            f"{'(cutoff='+str(cutoff)+')' if cutoff else ''}, "
@@ -327,7 +348,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
 
         norm      = max(len(ci_arr), 1)       # normalise by N(center_atom)
         angle_err = raw_angle / norm
-        total    += angle_err
+        total    += _add("angle", angle_err)
 
     # ------------------------------------------------------------------
     # 4. Coordination number  (EVERY individual centre atom)
@@ -387,6 +408,9 @@ def compute_error(param_vector: np.ndarray, config: dict,
         raw_cn = 0.0
         for li in range(len(ci_arr)):
             cn_i = _soft_coordination_number(dm[li].ravel(), cutoff, width)
+            if terms is not None:
+                n_int = int(np.sum(dm[li].ravel() < cutoff))
+                terms["cn_deficit"] += max(0, cnmin - n_int, n_int - cnmax)
             p    = _penalty(cn_i, cnmin, cnmax, w, scale=scale)
             if integral:
                 # Cation-centred only (ADR-0024); the version including anion
@@ -402,7 +426,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
 
         norm   = max(len(ci_arr), 1)          # normalise by N(center_atom)
         cn_err = raw_cn / norm
-        total += cn_err
+        total += _add("cn", cn_err)
 
     # ------------------------------------------------------------------
     # 5. Repulsion constraints  (one-sided lower-bound penalty)
@@ -444,7 +468,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
                                        for d in dists]))
             norm      = max(len(idx1), 1)     # normalise by N(atom1)
             rep_err   = raw_rep / norm
-            total    += rep_err
+            total    += _add("repulsion", rep_err)
             if verbose and rep_err > 0:
                 n_viol = int(viol_mask.sum())
                 log.append(
@@ -466,7 +490,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         # imbalance is this cell's own chemistry" reference instead.
         charge_scale = (max(sum(abs(charges.get(s, 0)) for s in species), _SCALE_EPS))
         err = cw * (tc / charge_scale) ** 2
-        total += err
+        total += _add("charge", err)
         if verbose and err > 0.001:
             log.append(f"  Charge total={tc:.2f}, P={err:.4f}")
 
@@ -475,7 +499,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
     #     anion centres are reported by breakdown.py only).
     # ------------------------------------------------------------------
     bv_err = bond_valence_term(frac, lat, species, config)["penalty"]
-    total += bv_err
+    total += _add("bond_valence", bv_err)
     if verbose and bv_err > 0.001:
         log.append(f"  Bond valence P={bv_err:.4f}")
 
@@ -515,7 +539,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
 
         vol_scale = _midpoint_scale(V_lo, V_hi)
         vol_err = _penalty(V_cell, V_lo, V_hi, vw, scale=vol_scale)
-        total  += vol_err
+        total  += _add("volume", vol_err)
         if verbose and vol_err > 0:
             log.append(f"  Volume: V={V_cell:.2f} A^3  "
                        f"(req [{V_lo:.1f},{V_hi:.1f}]), P={vol_err:.4f}")
@@ -526,13 +550,13 @@ def compute_error(param_vector: np.ndarray, config: dict,
     # ------------------------------------------------------------------
     dens = density_term(lat, species, config)
     if dens is not None:
-        total += dens["penalty"]
+        total += _add("density", dens["penalty"])
         if verbose and dens["penalty"] > 0:
             log.append(f"  Density: V/fu={dens['V_fu']:.2f} A^3  "
                        f"(req [{dens['V_min']:.2f},{dens['V_max']:.2f}]), P={dens['penalty']:.4f}")
     void = void_term(lat, frac, config)
     if void is not None:
-        total += void["penalty"]
+        total += _add("void", void["penalty"])
         if verbose and void["penalty"] > 0:
             log.append(f"  Void: R_hole={void['R_hole']:.3f} A  "
                        f"(req [{void['r_min']:.2f},{void['r_max']:.2f}]), P={void['penalty']:.4f}")
@@ -575,7 +599,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         ratio = float(axis_lengths.max() / max(axis_lengths.min(), _SCALE_EPS))
         ar_scale = _midpoint_scale(1.0, ratio_max)
         ar_err = _penalty(ratio, 1.0, ratio_max, arw, scale=ar_scale)
-        total += ar_err
+        total += _add("aspect_ratio", ar_err)
         if verbose and ar_err > 0:
             log.append(f"  Aspect ratio: {ratio:.2f} (max {ratio_max}), P={ar_err:.4f}")
 
@@ -648,7 +672,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
         G = 1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg
         cv_scale = _midpoint_scale(g_min, 1.0)
         cv_err = _penalty(G, g_min, 1.0, cvw, scale=cv_scale)
-        total += cv_err
+        total += _add("cell_validity", cv_err)
         if verbose and cv_err > 0:
             log.append(f"  Cell validity: G={G:.4f} (min {g_min}), P={cv_err:.4f}")
 
@@ -697,7 +721,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
 
             # Sub-penalty 1: CN
             cn_err = _penalty(K, ideal_cn - 0.5, ideal_cn + 0.5, cn_w)
-            total += cn_err
+            total += _add("hybrid", cn_err)
 
             # Sub-penalty 2: angles
             if K >= 2:
@@ -711,7 +735,7 @@ def compute_error(param_vector: np.ndarray, config: dict,
                         ang = math.degrees(math.acos(float(np.clip(cos_v, -1, 1))))
                         if hybrid in ("sp2", "sp3") and ang > 150.0:
                             continue
-                        total += _penalty(ang, a_lo, a_hi, angle_w)
+                        total += _add("hybrid", _penalty(ang, a_lo, a_hi, angle_w))
 
         if verbose:
             log.append(f"  Hybridisation {elem} ({hybrid}): evaluated")
